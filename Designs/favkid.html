@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Favkid — Premium Redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="favkid.css"/>
+<style>
+  html,body{margin:0;background:#f0eee9;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="screens/ui.jsx"></script>
+<script type="text/babel" src="screens/Connect.jsx"></script>
+<script type="text/babel" src="screens/Achievements.jsx"></script>
+<script type="text/babel" src="screens/Create.jsx"></script>
+<script type="text/babel" src="screens/Focus.jsx"></script>
+<script type="text/babel" src="screens/Assign.jsx"></script>
+<script type="text/babel" src="screens/Ranking.jsx"></script>
+
+<script type="text/babel">
+const W = 390;
+const screenBg = '#F4F3EF';
+const ab = (id,label,h)=>({id,label,width:W,height:h,style:{background:screenBg}});
+function App(){
+  return (
+    <DesignCanvas>
+      <DCSection id="user" title="Favkid — calm & premium" subtitle="User-facing screens · soft neutrals, one green accent, hairline depth">
+        <DCArtboard {...ab('connect','Connect',1000)}><ScreenConnect/></DCArtboard>
+        <DCArtboard {...ab('achievements','Achievements',1036)}><ScreenAchievements/></DCArtboard>
+        <DCArtboard {...ab('create','Create achievement',1888)}><ScreenCreate/></DCArtboard>
+        <DCArtboard {...ab('focus','Focus · the relay',1186)}><ScreenFocus/></DCArtboard>
+        <DCArtboard {...ab('ranking','Ranking',1058)}><ScreenRanking/></DCArtboard>
+      </DCSection>
+      <DCSection id="fav" title="Favorite-person view" subtitle="The accountability partner's side of the loop">
+        <DCArtboard {...ab('assign','Assign · review proof',1131)}><ScreenAssign/></DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+// Render only screens that exist yet (others stubbed during build)
+for (const k of ['ScreenAchievements','ScreenCreate','ScreenFocus','ScreenAssign','ScreenRanking']){
+  if(!window[k]) window[k] = (function(name){ return function(){ return <div className="fk" style={{padding:40,color:'#bbb'}}>{name}</div>; }; })(k);
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
