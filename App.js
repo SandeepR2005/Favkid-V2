@@ -1,18 +1,14 @@
 import React, { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 
 import { supabase } from "./src/lib/supabase";
+import { COLORS } from "./src/theme";
+import Icon from "./src/components/Icon";
+import { LoadingBox } from "./src/components/ui";
 
 import LoginScreen from "./src/screens/LoginScreen";
-import RoleHomeScreen from "./src/screens/RoleHomeScreen";
+import HomeScreen from "./src/screens/RoleHomeScreen";
 import ConnectScreen from "./src/screens/ConnectScreen";
 import CreateAchievementScreen from "./src/screens/CreateAchievementScreen";
 import AchievementListScreen from "./src/screens/AchievementListScreen";
@@ -95,45 +91,45 @@ export default function App() {
 
   const isFavoriteOnly = profile?.account_type === "favorite_person";
 
+  const go = (screen) => setActiveScreen(screen);
+
   const renderActiveScreen = () => {
     if (activeScreen === "achievements") {
-      return <AchievementListScreen />;
+      return <AchievementListScreen onLogout={handleLogout} />;
     }
 
     if (activeScreen === "matrix") {
       if (isFavoriteOnly) {
-        return <FavoriteMatrixAssignmentScreen />;
+        return <FavoriteMatrixAssignmentScreen onLogout={handleLogout} />;
       }
-
-      return <MatrixScreen />;
+      return <MatrixScreen onLogout={handleLogout} />;
     }
 
     if (activeScreen === "leaderboard") {
-      return <LeaderboardScreen />;
+      return <LeaderboardScreen onLogout={handleLogout} />;
     }
 
     if (activeScreen === "connect") {
-      return <ConnectScreen />;
+      return <ConnectScreen onLogout={handleLogout} />;
     }
 
     if (activeScreen === "create") {
-      return <CreateAchievementScreen />;
+      return (
+        <CreateAchievementScreen
+          onLogout={handleLogout}
+          onCreated={() => setActiveScreen("achievements")}
+        />
+      );
     }
 
-    return (
-      <RoleHomeScreen
-        profile={profile}
-        onLogout={handleLogout}
-        onOpenConnect={() => setActiveScreen("connect")}
-      />
-    );
+    return <HomeScreen profile={profile} onLogout={handleLogout} go={go} />;
   };
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4F46E5" />
-        <Text style={styles.loadingText}>Loading FavKid...</Text>
+        <LoadingBox text="Loading FavKid…" />
+        <StatusBar style="dark" />
       </View>
     );
   }
@@ -147,58 +143,41 @@ export default function App() {
     );
   }
 
+  const navLeft = [
+    { id: "home", icon: "home", label: "Home" },
+    { id: "achievements", icon: "target", label: "Track" },
+    {
+      id: "matrix",
+      icon: isFavoriteOnly ? "grid" : "dice",
+      label: isFavoriteOnly ? "Assign" : "Matrix",
+    },
+  ];
+  const navRight = [
+    { id: "leaderboard", icon: "trophy", label: "Rank" },
+    { id: "connect", icon: "handshake", label: "Connect" },
+  ];
+
   return (
     <View style={styles.appContainer}>
       {renderActiveScreen()}
 
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Text style={styles.logoutText}>Logout</Text>
-      </TouchableOpacity>
-
-      <View style={styles.bottomNav}>
-        <NavItem
-          label="Home"
-          icon="🏠"
-          active={activeScreen === "home"}
-          onPress={() => setActiveScreen("home")}
-        />
-
-        <NavItem
-          label="Track"
-          icon="🎯"
-          active={activeScreen === "achievements"}
-          onPress={() => setActiveScreen("achievements")}
-        />
-
-        <NavItem
-          label={isFavoriteOnly ? "Assign" : "Matrix"}
-          icon={isFavoriteOnly ? "🧾" : "🎲"}
-          active={activeScreen === "matrix"}
-          onPress={() => setActiveScreen("matrix")}
-        />
-
-        <NavItem
-          label="Rank"
-          icon="🏆"
-          active={activeScreen === "leaderboard"}
-          onPress={() => setActiveScreen("leaderboard")}
-        />
-
-        <NavItem
-          label="Connect"
-          icon="🤝"
-          active={activeScreen === "connect"}
-          onPress={() => setActiveScreen("connect")}
-        />
+      <View style={[styles.bottomNav, isFavoriteOnly && styles.bottomNavTight]}>
+        {navLeft.map((n) => (
+          <NavItem key={n.id} {...n} active={activeScreen === n.id} onPress={() => go(n.id)} />
+        ))}
 
         {!isFavoriteOnly && (
-          <NavItem
-            label="Add"
-            icon="➕"
-            active={activeScreen === "create"}
-            onPress={() => setActiveScreen("create")}
-          />
+          <TouchableOpacity activeOpacity={0.85} style={styles.navAdd} onPress={() => go("create")}>
+            <View style={styles.navAddCircle}>
+              <Icon name="plus" size={24} stroke={2.4} color={COLORS.accentInk} />
+            </View>
+            <Text style={styles.navAddLabel}>Add</Text>
+          </TouchableOpacity>
         )}
+
+        {navRight.map((n) => (
+          <NavItem key={n.id} {...n} active={activeScreen === n.id} onPress={() => go(n.id)} />
+        ))}
       </View>
 
       <StatusBar style="dark" />
@@ -206,93 +185,61 @@ export default function App() {
   );
 }
 
-function NavItem({ label, icon, active, onPress }) {
+function NavItem({ icon, label, active, onPress }) {
   return (
-    <TouchableOpacity
-      style={[styles.navItem, active && styles.navItemActive]}
-      onPress={onPress}
-    >
-      <Text style={styles.navIcon}>{icon}</Text>
-      <Text style={[styles.navLabel, active && styles.navLabelActive]}>
-        {label}
-      </Text>
+    <TouchableOpacity style={styles.navItem} onPress={onPress} activeOpacity={0.7}>
+      <Icon name={icon} size={22} color={active ? COLORS.accent : COLORS.textMute} />
+      <Text style={[styles.navLabel, active && { color: COLORS.accent }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  appContainer: {
-    flex: 1,
-    backgroundColor: "#F7F8FA",
-  },
+  appContainer: { flex: 1, backgroundColor: COLORS.bg },
   loadingContainer: {
     flex: 1,
-    backgroundColor: "#F7F8FA",
+    backgroundColor: COLORS.bg,
     alignItems: "center",
     justifyContent: "center",
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#64748B",
-  },
-  logoutButton: {
-    position: "absolute",
-    top: 45,
-    right: 20,
-    backgroundColor: "#EF4444",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    zIndex: 100,
-  },
-  logoutText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "800",
   },
   bottomNav: {
     position: "absolute",
-    left: 8,
-    right: 8,
-    bottom: 18,
-    height: 66,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
+    left: 14,
+    right: 14,
+    bottom: 16,
+    height: 68,
+    backgroundColor: COLORS.surface,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: COLORS.borderSoft,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-around",
-    paddingHorizontal: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 8,
+    paddingHorizontal: 8,
+    shadowColor: "#1B1F2A",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 22,
+    elevation: 12,
     zIndex: 100,
   },
-  navItem: {
-    flex: 1,
+  bottomNavTight: { justifyContent: "space-between", paddingHorizontal: 18 },
+  navItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: 3, paddingVertical: 8 },
+  navLabel: { fontSize: 9.5, fontWeight: "700", letterSpacing: 0.2, color: COLORS.textMute },
+  navAdd: { flex: 1, alignItems: "center", justifyContent: "center" },
+  navAddCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    backgroundColor: COLORS.accent,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 8,
-    borderRadius: 18,
+    marginTop: -22,
+    shadowColor: COLORS.accent,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+    elevation: 10,
   },
-  navItemActive: {
-    backgroundColor: "#EEF0FF",
-  },
-  navIcon: {
-    fontSize: 16,
-    marginBottom: 2,
-  },
-  navLabel: {
-    fontSize: 8.5,
-    fontWeight: "800",
-    color: "#64748B",
-  },
-  navLabelActive: {
-    color: "#4F46E5",
-  },
+  navAddLabel: { fontSize: 9.5, fontWeight: "700", color: COLORS.textMute, marginTop: 3 },
 });

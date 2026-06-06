@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
   SafeAreaView,
@@ -11,34 +10,27 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../lib/supabase";
+import { COLORS, FONTS, avatarColor, initialOf } from "../theme";
+import Icon from "../components/Icon";
+import {
+  Bar,
+  Card,
+  Eyebrow,
+  LoadingBox,
+  Mono,
+  PageSub,
+  PageTitle,
+  SecTitle,
+  TopBar,
+} from "../components/ui";
 
-const COLORS = {
-  primary: "#000000",
-  surface: "#F7F9FB",
-  surfaceLowest: "#FFFFFF",
-  surfaceLow: "#F2F4F6",
-  surfaceContainer: "#ECEEF0",
-  surfaceHigh: "#E6E8EA",
-  outline: "#76777D",
-  outlineVariant: "#C6C6CD",
-  onSurface: "#191C1E",
-  onSurfaceVariant: "#45464D",
-  secondary: "#515F74",
-  secondaryContainer: "#D5E3FD",
-  tertiary: "#3980F4",
-  tertiaryFixed: "#D8E2FF",
-  tertiaryFixedDim: "#ADC6FF",
-  error: "#BA1A1A",
-  success: "#16A34A",
-  white: "#FFFFFF",
-};
-
-export default function LeaderboardScreen() {
+export default function LeaderboardScreen({ onLogout }) {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [profile, setProfile] = useState(null);
   const [achievements, setAchievements] = useState([]);
   const [selectedAchievementId, setSelectedAchievementId] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [weeklyRecap, setWeeklyRecap] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingBoard, setLoadingBoard] = useState(false);
@@ -50,8 +42,10 @@ export default function LeaderboardScreen() {
   useEffect(() => {
     if (selectedAchievementId) {
       loadLeaderboard(selectedAchievementId);
+      loadWeeklyRecap(selectedAchievementId);
     } else {
       setLeaderboard([]);
+      setWeeklyRecap(null);
     }
   }, [selectedAchievementId]);
 
@@ -129,10 +123,7 @@ export default function LeaderboardScreen() {
         Alert.alert("Achievement fetch failed", error.message);
       } else {
         (data || []).forEach((item) => {
-          achievementMap.set(item.id, {
-            ...item,
-            source_label: "Your achievement",
-          });
+          achievementMap.set(item.id, { ...item, source_label: "Your achievement" });
         });
       }
     }
@@ -160,10 +151,7 @@ export default function LeaderboardScreen() {
             Alert.alert("Connected achievements fetch failed", achievementError.message);
           } else {
             (connectedAchievements || []).forEach((item) => {
-              achievementMap.set(item.id, {
-                ...item,
-                source_label: "Connected achievement",
-              });
+              achievementMap.set(item.id, { ...item, source_label: "Connected achievement" });
             });
           }
         }
@@ -205,13 +193,23 @@ export default function LeaderboardScreen() {
   const loadLeaderboard = async (achievementId) => {
     setLoadingBoard(true);
 
+    const improvedResult = await supabase.rpc("get_achievement_favorite_leaderboard_v2", {
+      p_achievement_id: achievementId,
+    });
+
+    if (!improvedResult.error) {
+      setLeaderboard(improvedResult.data || []);
+      setLoadingBoard(false);
+      return;
+    }
+
     const { data, error } = await supabase.rpc("get_achievement_favorite_leaderboard", {
       p_achievement_id: achievementId,
     });
 
     if (error) {
       setLoadingBoard(false);
-      Alert.alert("Leaderboard fetch failed", error.message);
+      Alert.alert("Leaderboard fetch failed", improvedResult.error?.message || error.message);
       return;
     }
 
@@ -219,20 +217,35 @@ export default function LeaderboardScreen() {
     setLoadingBoard(false);
   };
 
+  const loadWeeklyRecap = async (achievementId) => {
+    const { data, error } = await supabase.rpc("get_achievement_weekly_recap", {
+      p_achievement_id: achievementId,
+    });
+
+    if (error) {
+      setWeeklyRecap(null);
+      return;
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    setWeeklyRecap(row || null);
+  };
+
   const onRefresh = async () => {
     await loadPage();
     if (selectedAchievementId) {
       await loadLeaderboard(selectedAchievementId);
+      await loadWeeklyRecap(selectedAchievementId);
     }
   };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loadingBox}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>LOADING RANKING...</Text>
+        <View style={{ paddingHorizontal: 20 }}>
+          <TopBar brand="FAVORITE PERSON POINTS" onLogout={onLogout} />
         </View>
+        <LoadingBox text="Loading ranking…" />
       </SafeAreaView>
     );
   }
@@ -243,137 +256,112 @@ export default function LeaderboardScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={COLORS.primary}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} />
         }
       >
-        <View style={styles.topLabelRow}>
-          <Text style={styles.topIcon}>📊</Text>
-          <Text style={styles.topLabel}>FAVORITE PERSON POINTS</Text>
-        </View>
+        <TopBar brand="FAVORITE PERSON POINTS" onLogout={onLogout} />
 
-        <View style={styles.heroSection}>
-          <Text style={styles.title}>Ranking</Text>
-          <View style={styles.infoCard}>
-            <Text style={styles.infoText}>
-              Ranking is calculated separately for each achievement. When a new
-              achievement starts, the ranking starts fresh. Old achievement
-              contribution history remains stored securely.
+        <PageTitle>Ranking</PageTitle>
+        <PageSub>
+          Calculated separately for each achievement. A new achievement starts the ranking fresh;
+          old history stays stored.
+        </PageSub>
+
+        <SecTitle style={{ fontSize: 20 }}>Point rules</SecTitle>
+        <View style={{ gap: 10 }}>
+          <Card style={[styles.ruleCard, { borderLeftColor: COLORS.info }]}>
+            <View style={styles.ruleHead}>
+              <Icon name="eye" size={17} color={COLORS.info} />
+              <Mono style={[styles.ruleKicker, { color: COLORS.info }]}>VERIFICATION</Mono>
+            </View>
+            <Text style={styles.ruleBody}>
+              Points are awarded only after the favorite person views the proof and approves the
+              submitted task.
             </Text>
-          </View>
-        </View>
-
-        <View style={styles.rulesSection}>
-          <View style={styles.sectionHeadingRow}>
-            <Text style={styles.sectionHeadingIcon}>⚖️</Text>
-            <Text style={styles.sectionHeading}>Point Rules</Text>
-          </View>
-
-          <View style={styles.ruleGrid}>
-            <View style={styles.ruleBox}>
-              <Text style={styles.ruleLabel}>VERIFICATION</Text>
-              <Text style={styles.ruleBody}>
-                Points are awarded only after the favorite person views the proof
-                and approves the submitted task.
-              </Text>
+          </Card>
+          <Card style={[styles.ruleCard, { borderLeftColor: COLORS.warn }]}>
+            <View style={styles.ruleHead}>
+              <Icon name="clock" size={17} color={COLORS.warn} />
+              <Mono style={[styles.ruleKicker, { color: COLORS.warn }]}>TIME SENSITIVITY</Mono>
             </View>
-
-            <View style={[styles.ruleBox, styles.ruleBoxBlue]}>
-              <Text style={[styles.ruleLabel, styles.ruleLabelBlue]}>TIME SENSITIVITY</Text>
-              <Text style={styles.ruleBody}>
-                Earlier completion earns more points. Late completion gives reduced
-                points based on your selected formula.
-              </Text>
+            <Text style={styles.ruleBody}>
+              Earlier completion earns more points. Late completion gives reduced points based on
+              your selected formula.
+            </Text>
+          </Card>
+          <Card style={[styles.ruleCard, { borderLeftColor: COLORS.accent }]}>
+            <View style={styles.ruleHead}>
+              <Icon name="trophy" size={17} color={COLORS.accent} />
+              <Mono style={[styles.ruleKicker, { color: COLORS.accent }]}>QUALITY SCORE</Mono>
             </View>
-          </View>
+            <Text style={styles.ruleBody}>
+              Ranking now considers assigned tasks, approvals, prediction accuracy, feedback quality, and support consistency.
+            </Text>
+          </Card>
         </View>
 
         {achievements.length === 0 ? (
-          <View style={styles.emptyCard}>
+          <Card style={{ marginTop: 18, borderStyle: "dashed" }}>
             <Text style={styles.emptyTitle}>No rankable achievements</Text>
             <Text style={styles.emptyText}>
-              Create an achievement, connect favorite people, and complete Matrix
-              proof approval to generate rankings.
+              Create an achievement, connect favorite people, and complete Matrix proof approval to
+              generate rankings.
             </Text>
-          </View>
+          </Card>
         ) : (
           <>
-            <View style={styles.achievementSection}>
-              <Text style={styles.smallSectionLabel}>SELECT ACHIEVEMENT</Text>
-
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.achievementCarousel}
-              >
-                {achievements.map((achievement) => {
-                  const active = achievement.id === selectedAchievementId;
-
-                  return (
-                    <AchievementButton
-                      key={achievement.id}
-                      achievement={achievement}
-                      active={active}
-                      onPress={() => setSelectedAchievementId(achievement.id)}
-                    />
-                  );
-                })}
-              </ScrollView>
-            </View>
+            <SecTitle style={{ fontSize: 20 }}>Select achievement</SecTitle>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 11, paddingRight: 8, paddingVertical: 2 }}
+            >
+              {achievements.map((achievement) => (
+                <AchievementButton
+                  key={achievement.id}
+                  achievement={achievement}
+                  active={achievement.id === selectedAchievementId}
+                  onPress={() => setSelectedAchievementId(achievement.id)}
+                />
+              ))}
+            </ScrollView>
 
             {selectedAchievement && (
-              <View style={styles.activeDetailCard}>
-                <Text style={styles.activeDetailLabel}>CURRENT RANKING FOR</Text>
-                <Text style={styles.activeDetailTitle}>{selectedAchievement.title}</Text>
-
+              <Card style={styles.activeCard}>
+                <Eyebrow>Current ranking for</Eyebrow>
+                <Text style={styles.activeTitle}>{selectedAchievement.title}</Text>
                 <View style={styles.activeStatsRow}>
-                  <View style={styles.activeStatBox}>
-                    <Text style={styles.activeStatLabel}>STATUS</Text>
-                    <Text style={styles.activeStatValue}>
-                      {normalizeText(selectedAchievement.status)}
-                    </Text>
-                  </View>
-
-                  <View style={styles.activeStatBox}>
-                    <Text style={styles.activeStatLabel}>PROGRESS</Text>
-                    <Text style={styles.activeStatValue}>
-                      {selectedAchievement.progress || 0}%
-                    </Text>
-                  </View>
-
-                  <View style={styles.activeStatBox}>
-                    <Text style={styles.activeStatLabel}>DEADLINE</Text>
-                    <Text style={styles.activeStatValue} numberOfLines={2}>
-                      {formatDateTime(selectedAchievement.overall_deadline_at)}
-                    </Text>
-                  </View>
+                  <ActiveStat label="STATUS" value={normalizeText(selectedAchievement.status)} />
+                  <ActiveStat label="PROGRESS" value={`${selectedAchievement.progress || 0}%`} />
+                  <ActiveStat
+                    label="DEADLINE"
+                    value={formatShortDate(selectedAchievement.overall_deadline_at)}
+                  />
                 </View>
-              </View>
+              </Card>
             )}
 
-            <View style={styles.leaderboardHeaderRow}>
-              <Text style={styles.leaderboardTitle}>Leaderboard</Text>
-              <Text style={styles.participantBadge}>{participantCountText}</Text>
+            <WeeklyRecapCard recap={weeklyRecap} />
+
+            <View style={styles.boardHeader}>
+              <SecTitle style={{ marginTop: 0, marginBottom: 0, fontSize: 24 }}>Leaderboard</SecTitle>
+              <Mono style={styles.participantBadge}>{participantCountText}</Mono>
             </View>
 
             {loadingBoard ? (
-              <View style={styles.boardLoadingBox}>
-                <ActivityIndicator size="small" color={COLORS.primary} />
-                <Text style={styles.boardLoadingText}>LOADING BOARD...</Text>
-              </View>
+              <Card style={{ alignItems: "center", paddingVertical: 24 }}>
+                <LoadingBox text="Loading board…" />
+              </Card>
             ) : leaderboard.length === 0 ? (
-              <View style={styles.emptyCard}>
+              <Card style={{ borderStyle: "dashed" }}>
                 <Text style={styles.emptyTitle}>No participants yet</Text>
                 <Text style={styles.emptyText}>
-                  Connected favorite people will appear here. Points will update
-                  after proof is viewed and approved.
+                  Connected favorite people will appear here. Points update after proof is viewed and
+                  approved.
                 </Text>
-              </View>
+              </Card>
             ) : (
-              <View style={styles.leaderboardList}>
+              <View style={{ gap: 10 }}>
                 {leaderboard.map((person) => (
                   <LeaderboardRow key={person.favorite_person_id} person={person} />
                 ))}
@@ -388,87 +376,129 @@ export default function LeaderboardScreen() {
 
 function AchievementButton({ achievement, active, onPress }) {
   const progress = Number(achievement.progress || 0);
-  const deadlineOver = achievement.overall_deadline_at
-    ? new Date(achievement.overall_deadline_at).getTime() < Date.now()
-    : false;
-
+  const done = String(achievement.status || "").toLowerCase() === "completed" || progress >= 100;
   return (
     <TouchableOpacity
-      activeOpacity={0.82}
-      style={[styles.achievementButton, active && styles.achievementButtonActive]}
+      activeOpacity={0.85}
+      style={[styles.achBtn, active && styles.achBtnActive]}
       onPress={onPress}
     >
-      <View style={styles.achievementButtonTopRow}>
-        <Text
-          style={[
-            styles.achievementButtonTitle,
-            active && styles.achievementButtonTitleActive,
-          ]}
-          numberOfLines={2}
-        >
+      <View style={styles.achTopRow}>
+        <Text style={[styles.achTitle, active && { color: COLORS.accent }]} numberOfLines={1}>
           {achievement.title || "Untitled"}
         </Text>
-        <Text style={[styles.achievementStatusIcon, active && styles.achievementStatusIconActive]}>
-          {progress >= 100 ? "✓" : "◷"}
-        </Text>
+        {active && <Icon name="check" size={16} stroke={2.4} color={COLORS.accent} />}
       </View>
-
-      <View style={styles.smallProgressTrack}>
-        <View
-          style={[
-            styles.smallProgressFill,
-            active && styles.smallProgressFillActive,
-            { width: `${Math.min(progress, 100)}%` },
-          ]}
-        />
+      <View style={{ marginVertical: 12 }}>
+        <View style={styles.miniTrack}>
+          <View
+            style={[
+              styles.miniFill,
+              { width: `${Math.min(progress, 100)}%`, backgroundColor: done ? COLORS.text : COLORS.accent },
+            ]}
+          />
+        </View>
       </View>
-
-      <Text style={[styles.achievementButtonMeta, active && styles.achievementButtonMetaActive]}>
+      <Mono style={styles.achMeta}>
         {normalizeText(achievement.status)} · {progress}%
-      </Text>
-
-      <Text style={[styles.achievementSourceText, active && styles.achievementButtonMetaActive]}>
-        {deadlineOver ? "DEADLINE OVER" : achievement.source_label || "Achievement"}
-      </Text>
+      </Mono>
     </TouchableOpacity>
+  );
+}
+
+function ActiveStat({ label, value }) {
+  return (
+    <View style={{ flex: 1 }}>
+      <Mono style={styles.activeStatLabel}>{label}</Mono>
+      <Text style={styles.activeStatValue} numberOfLines={2}>
+        {value}
+      </Text>
+    </View>
   );
 }
 
 function LeaderboardRow({ person }) {
   const isFirst = Number(person.rank_number) === 1;
-  const initial = getInitial(person.full_name || person.username);
+  const ac = avatarColor(person.favorite_person_id || person.full_name);
+  const qualityScore = Math.round(Number(person.quality_score || 0));
+  const predictionAccuracy = Math.round(Number(person.prediction_accuracy || 0));
+  const supportStreak = Number(person.support_streak || person.approved_tasks || 0);
 
   return (
-    <View style={[styles.leaderboardRow, isFirst && styles.leaderboardRowTop]}>
-      <View style={styles.rankNumberWrapper}>
-        <Text style={[styles.rankNumber, isFirst && styles.rankNumberTop]}>
-          {person.rank_number}
+    <Card style={[styles.row, isFirst && styles.rowTop]}>
+      <Text style={[styles.rankNum, { color: isFirst ? COLORS.accent : COLORS.textMute }]}>#{person.rank_number}</Text>
+      <View style={[styles.rowAvatar, { backgroundColor: ac.soft }]}>
+        <Text style={[styles.rowAvatarText, { color: ac.solid }]}>          
+          {initialOf(person.full_name || person.username)}
         </Text>
       </View>
-
-      <View style={styles.avatarCircle}>
-        <Text style={styles.avatarText}>{initial}</Text>
-      </View>
-
-      <View style={styles.personInfo}>
+      <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={styles.personName}>{person.full_name || "Favorite Person"}</Text>
-        <Text style={styles.personEmail}>{person.username || person.account_type}</Text>
-        <Text style={styles.approvedTasksText}>
-          {person.approved_tasks || 0} APPROVED TASKS
+        <Text style={styles.personEmail} numberOfLines={1}>{person.username || person.account_type}</Text>
+        <Text style={styles.approvedText}>
+          {person.approved_tasks || 0} approved · {person.tasks_assigned || 0} assigned · streak {supportStreak}
         </Text>
+        <View style={styles.qualityBarRow}>
+          <View style={styles.qualityTrack}>
+            <View style={[styles.qualityFill, { width: `${Math.min(qualityScore, 100)}%` }]} />
+          </View>
+          <Mono style={styles.qualityText}>{qualityScore}% quality</Mono>
+        </View>
+        <Mono style={styles.qualityMeta}>Prediction accuracy: {predictionAccuracy}%</Mono>
       </View>
-
-      <View style={styles.pointsBox}>
-        <Text style={styles.pointsNumber}>{person.total_points || 0}</Text>
-        <Text style={styles.pointsLabel}>POINTS</Text>
+      <View style={{ alignItems: "flex-end" }}>
+        <Text style={[styles.pointsNum, { color: isFirst ? COLORS.accent : COLORS.text }]}>          
+          {person.total_points || 0}
+        </Text>
+        <Mono style={styles.pointsLabel}>POINTS</Mono>
       </View>
-    </View>
+    </Card>
   );
 }
 
-function getInitial(value) {
-  if (!value) return "F";
-  return String(value).trim().charAt(0).toUpperCase();
+function WeeklyRecapCard({ recap }) {
+  if (!recap) {
+    return (
+      <Card style={styles.weeklyCard}>
+        <View style={styles.ruleHead}>
+          <Icon name="cal" size={17} color={COLORS.accent} />
+          <Mono style={[styles.ruleKicker, { color: COLORS.accent }]}>WEEKLY RECAP</Mono>
+        </View>
+        <Text style={styles.ruleBody}>No activity recorded for this achievement this week yet.</Text>
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={styles.weeklyCard}>
+      <View style={styles.ruleHead}>
+        <Icon name="cal" size={17} color={COLORS.accent} />
+        <Mono style={[styles.ruleKicker, { color: COLORS.accent }]}>WEEKLY RECAP</Mono>
+      </View>
+      <View style={styles.weeklyGrid}>
+        <WeeklyMetric label="Completed" value={recap.tasks_completed || 0} />
+        <WeeklyMetric label="Proofs approved" value={recap.proofs_approved || 0} />
+        <WeeklyMetric label="Points" value={recap.points_awarded || 0} />
+      </View>
+      <View style={styles.weeklyLine}>
+        <Text style={styles.weeklyLabel}>Top supporter</Text>
+        <Text style={styles.weeklyValue}>{recap.top_supporter_name || "Not available"}</Text>
+      </View>
+      <View style={styles.weeklyLine}>
+        <Text style={styles.weeklyLabel}>Most accurate predictor</Text>
+        <Text style={styles.weeklyValue}>{recap.most_accurate_predictor_name || "Not available"}</Text>
+      </View>
+    </Card>
+  );
+}
+
+function WeeklyMetric({ label, value }) {
+  return (
+    <View style={styles.weeklyMetric}>
+      <Text style={styles.weeklyMetricValue}>{value}</Text>
+      <Text style={styles.weeklyMetricLabel}>{label}</Text>
+    </View>
+  );
 }
 
 function normalizeText(value) {
@@ -476,406 +506,67 @@ function normalizeText(value) {
   return String(value).replace(/_/g, " ").toUpperCase();
 }
 
-function formatDateTime(value) {
-  if (!value) return "NO DEADLINE";
-
+function formatShortDate(value) {
+  if (!value) return "No deadline";
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "INVALID DATE";
-
-  return date.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  if (Number.isNaN(date.getTime())) return "Invalid";
+  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  content: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 120 },
+  ruleCard: { borderLeftWidth: 3 },
+  ruleHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 7 },
+  ruleKicker: { fontSize: 11, letterSpacing: 1, fontWeight: "700" },
+  ruleBody: { color: COLORS.textDim, fontSize: 13.5, lineHeight: 19 },
+  emptyTitle: { color: COLORS.text, fontSize: 18, fontWeight: "800" },
+  emptyText: { marginTop: 7, color: COLORS.textMute, fontSize: 13.5, lineHeight: 20 },
+  achBtn: {
+    minWidth: 168,
+    maxWidth: 220,
     backgroundColor: COLORS.surface,
-  },
-  content: {
-    paddingHorizontal: 24,
-    paddingTop: 26,
-    paddingBottom: 120,
-  },
-  loadingBox: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    marginTop: 14,
-    color: COLORS.onSurface,
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1.4,
-  },
-  topLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-    paddingRight: 82,
-  },
-  topIcon: {
-    fontSize: 18,
-    marginRight: 8,
-  },
-  topLabel: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1.5,
-  },
-  heroSection: {
-    marginBottom: 34,
-  },
-  title: {
-    color: COLORS.primary,
-    fontSize: 34,
-    lineHeight: 42,
-    fontWeight: "800",
-    letterSpacing: -0.7,
-    marginBottom: 16,
-  },
-  infoCard: {
-    backgroundColor: COLORS.surfaceLowest,
-    borderWidth: 1,
-    borderColor: COLORS.outlineVariant,
-    borderRadius: 16,
-    padding: 20,
-  },
-  infoText: {
-    color: COLORS.onSurfaceVariant,
-    fontSize: 15,
-    lineHeight: 24,
-    fontWeight: "500",
-  },
-  rulesSection: {
-    marginBottom: 34,
-  },
-  sectionHeadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-  sectionHeadingIcon: {
-    fontSize: 18,
-    marginRight: 8,
-  },
-  sectionHeading: {
-    color: COLORS.onSurface,
-    fontSize: 24,
-    lineHeight: 31,
-    fontWeight: "700",
-  },
-  ruleGrid: {
-    flexDirection: "column",
-  },
-  ruleBox: {
-    backgroundColor: COLORS.surfaceLowest,
-    borderWidth: 1,
-    borderColor: COLORS.outlineVariant,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 12,
-  },
-  ruleBoxBlue: {
-    backgroundColor: COLORS.secondaryContainer,
-  },
-  ruleLabel: {
-    color: COLORS.tertiary,
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  ruleLabelBlue: {
-    color: COLORS.secondary,
-  },
-  ruleBody: {
-    color: COLORS.onSurfaceVariant,
-    fontSize: 13,
-    lineHeight: 20,
-    fontWeight: "500",
-  },
-  achievementSection: {
-    marginBottom: 28,
-  },
-  smallSectionLabel: {
-    color: COLORS.onSurfaceVariant,
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1,
-    marginBottom: 14,
-  },
-  achievementCarousel: {
-    paddingRight: 24,
-    paddingBottom: 4,
-  },
-  achievementButton: {
-    width: 240,
-    backgroundColor: COLORS.surfaceLowest,
-    borderWidth: 1,
-    borderColor: COLORS.outlineVariant,
-    borderRadius: 16,
-    padding: 18,
-    marginRight: 14,
-  },
-  achievementButtonActive: {
     borderWidth: 2,
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.surfaceLowest,
-  },
-  achievementButtonTopRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  achievementButtonTitle: {
-    flex: 1,
-    color: COLORS.onSurfaceVariant,
-    fontSize: 17,
-    lineHeight: 23,
-    fontWeight: "700",
-    paddingRight: 8,
-  },
-  achievementButtonTitleActive: {
-    color: COLORS.primary,
-  },
-  achievementStatusIcon: {
-    color: COLORS.outline,
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  achievementStatusIconActive: {
-    color: COLORS.tertiary,
-  },
-  smallProgressTrack: {
-    width: "100%",
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: COLORS.surfaceHigh,
-    overflow: "hidden",
-  },
-  smallProgressFill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: COLORS.outlineVariant,
-  },
-  smallProgressFillActive: {
-    backgroundColor: COLORS.primary,
-  },
-  achievementButtonMeta: {
-    marginTop: 9,
-    color: COLORS.outline,
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-  },
-  achievementButtonMetaActive: {
-    color: COLORS.onSurfaceVariant,
-  },
-  achievementSourceText: {
-    marginTop: 5,
-    color: COLORS.outline,
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-  },
-  activeDetailCard: {
-    position: "relative",
-    overflow: "hidden",
-    backgroundColor: COLORS.primary,
-    borderWidth: 1,
-    borderColor: COLORS.outlineVariant,
+    borderColor: COLORS.borderSoft,
     borderRadius: 18,
-    padding: 24,
-    marginBottom: 34,
+    padding: 16,
   },
-  activeDetailLabel: {
-    color: COLORS.tertiaryFixedDim,
-    opacity: 0.9,
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-  activeDetailTitle: {
-    color: COLORS.white,
-    fontSize: 31,
-    lineHeight: 38,
-    fontWeight: "800",
-    marginTop: 8,
-    marginBottom: 22,
-  },
-  activeStatsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  activeStatBox: {
-    width: "33.33%",
-    paddingRight: 8,
-    marginBottom: 8,
-  },
-  activeStatLabel: {
-    color: COLORS.white,
-    opacity: 0.55,
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    marginBottom: 5,
-  },
-  activeStatValue: {
-    color: COLORS.white,
-    fontSize: 14,
-    lineHeight: 19,
-    fontWeight: "700",
-  },
-  leaderboardHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  leaderboardTitle: {
-    color: COLORS.onSurface,
-    fontSize: 24,
-    lineHeight: 31,
-    fontWeight: "700",
-  },
-  participantBadge: {
-    color: COLORS.onSurfaceVariant,
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-  },
-  boardLoadingBox: {
-    backgroundColor: COLORS.surfaceLowest,
-    borderWidth: 1,
-    borderColor: COLORS.outlineVariant,
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
-  },
-  boardLoadingText: {
-    marginTop: 10,
-    color: COLORS.onSurfaceVariant,
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-  },
-  emptyCard: {
-    backgroundColor: COLORS.surfaceLowest,
-    borderWidth: 1,
-    borderColor: COLORS.outlineVariant,
-    borderRadius: 16,
-    padding: 20,
-  },
-  emptyTitle: {
-    color: COLORS.onSurface,
-    fontSize: 20,
-    lineHeight: 26,
-    fontWeight: "800",
-    marginBottom: 8,
-  },
-  emptyText: {
-    color: COLORS.onSurfaceVariant,
-    fontSize: 14,
-    lineHeight: 21,
-    fontWeight: "500",
-  },
-  leaderboardList: {
-    paddingBottom: 8,
-  },
-  leaderboardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.surfaceLowest,
-    borderWidth: 1,
-    borderColor: COLORS.outlineVariant,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
-  },
-  leaderboardRowTop: {
-    backgroundColor: COLORS.tertiaryFixed,
-  },
-  rankNumberWrapper: {
-    width: 34,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  rankNumber: {
-    color: COLORS.onSurfaceVariant,
-    fontSize: 22,
-    lineHeight: 25,
-    fontWeight: "800",
-  },
-  rankNumberTop: {
-    color: COLORS.primary,
-    fontSize: 26,
-  },
-  avatarCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.surfaceContainer,
-    borderWidth: 1,
-    borderColor: COLORS.outlineVariant,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-  },
-  avatarText: {
-    color: COLORS.primary,
-    fontSize: 17,
-    fontWeight: "800",
-  },
-  personInfo: {
-    flex: 1,
-    paddingRight: 8,
-  },
-  personName: {
-    color: COLORS.primary,
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: "700",
-  },
-  personEmail: {
-    color: COLORS.onSurfaceVariant,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: "500",
-    marginTop: 2,
-  },
-  approvedTasksText: {
-    color: COLORS.tertiary,
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: "800",
-    letterSpacing: 0.7,
-    marginTop: 4,
-  },
-  pointsBox: {
-    minWidth: 64,
-    alignItems: "flex-end",
-  },
-  pointsNumber: {
-    color: COLORS.primary,
-    fontSize: 28,
-    lineHeight: 31,
-    fontWeight: "800",
-  },
-  pointsLabel: {
-    color: COLORS.onSurfaceVariant,
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    marginTop: 2,
-  },
+  achBtnActive: { borderColor: COLORS.accent },
+  achTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  achTitle: { fontFamily: FONTS.display, fontSize: 16, fontWeight: "800", color: COLORS.text, flex: 1 },
+  miniTrack: { height: 7, borderRadius: 99, backgroundColor: COLORS.surface3, overflow: "hidden" },
+  miniFill: { height: "100%", borderRadius: 99 },
+  achMeta: { fontSize: 10.5, letterSpacing: 0.6, color: COLORS.textMute, textTransform: "uppercase" },
+  activeCard: { marginTop: 14, backgroundColor: COLORS.ink, borderColor: COLORS.borderSoft },
+  activeTitle: { fontFamily: FONTS.display, fontSize: 30, fontWeight: "800", color: COLORS.onInk, marginTop: 8, marginBottom: 16 },
+  activeStatsRow: { flexDirection: "row", gap: 8 },
+  activeStatLabel: { fontSize: 10, letterSpacing: 0.8, color: COLORS.textMute },
+  activeStatValue: { fontWeight: "700", fontSize: 14, color: COLORS.onInk, marginTop: 5 },
+  boardHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginTop: 26, marginBottom: 12 },
+  participantBadge: { fontSize: 11.5, color: COLORS.textMute },
+
+  weeklyCard: { marginTop: 14, backgroundColor: COLORS.surface, borderColor: COLORS.borderSoft },
+  weeklyGrid: { flexDirection: "row", gap: 8, marginTop: 12, marginBottom: 10 },
+  weeklyMetric: { flex: 1, backgroundColor: COLORS.surface2, borderRadius: 14, padding: 10 },
+  weeklyMetricValue: { fontFamily: FONTS.display, fontSize: 21, fontWeight: "800", color: COLORS.accent },
+  weeklyMetricLabel: { marginTop: 2, fontSize: 10.5, color: COLORS.textMute, fontWeight: "700" },
+  weeklyLine: { flexDirection: "row", justifyContent: "space-between", gap: 10, paddingTop: 8 },
+  weeklyLabel: { color: COLORS.textMute, fontSize: 12.5, fontWeight: "700" },
+  weeklyValue: { flex: 1, textAlign: "right", color: COLORS.text, fontSize: 12.5, fontWeight: "800" },
+  row: { flexDirection: "row", alignItems: "center", gap: 13, padding: 15 },
+  rowTop: { backgroundColor: COLORS.accentSoft, borderColor: "transparent" },
+  rankNum: { fontFamily: FONTS.display, fontSize: 22, fontWeight: "800", width: 22 },
+  rowAvatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  rowAvatarText: { fontFamily: FONTS.display, fontWeight: "800", fontSize: 18 },
+  personName: { color: COLORS.text, fontWeight: "700", fontSize: 15 },
+  personEmail: { color: COLORS.textMute, fontSize: 11.5, marginTop: 1 },
+  approvedText: { color: COLORS.info, fontSize: 11, fontWeight: "700", marginTop: 3 },
+
+  qualityBarRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 7 },
+  qualityTrack: { flex: 1, height: 6, backgroundColor: COLORS.surface3, borderRadius: 99, overflow: "hidden" },
+  qualityFill: { height: "100%", backgroundColor: COLORS.accent, borderRadius: 99 },
+  qualityText: { fontSize: 9.5, color: COLORS.accent, fontWeight: "700" },
+  qualityMeta: { fontSize: 9.5, color: COLORS.textMute, marginTop: 4 },
+  pointsNum: { fontFamily: FONTS.display, fontSize: 26, fontWeight: "800" },
+  pointsLabel: { fontSize: 9.5, letterSpacing: 1, color: COLORS.textMute },
 });

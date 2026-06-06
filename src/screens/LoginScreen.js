@@ -1,256 +1,219 @@
 import React, { useState } from "react";
 import {
-    Alert,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import { supabase } from "../lib/supabase";
+import { COLORS, FONTS } from "../theme";
+import Icon from "../components/Icon";
+import { Btn, Chip, Eyebrow, Field, Input } from "../components/ui";
 
 export default function LoginScreen() {
-    const [mode, setMode] = useState("login");
-    const [fullName, setFullName] = useState("");
-    const [accountType, setAccountType] = useState("user");
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
+  const [mode, setMode] = useState("login");
+  const [fullName, setFullName] = useState("");
+  const [accountType, setAccountType] = useState("user");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
 
-    const isLogin = mode === "login";
+  const isLogin = mode === "login";
 
-    const handleAuth = async () => {
-        if (!email || !password) {
-            Alert.alert("Missing details", "Please enter email and password.");
-            return;
-        }
+  const handleAuth = async () => {
+    if (!email || !password) {
+      Alert.alert("Missing details", "Please enter email and password.");
+      return;
+    }
 
-        if (!isLogin && !fullName) {
-            Alert.alert("Missing name", "Please enter your full name.");
-            return;
-        }
+    if (!isLogin && !fullName) {
+      Alert.alert("Missing name", "Please enter your full name.");
+      return;
+    }
 
-        if (isLogin) {
-            const { error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
-            });
+    setBusy(true);
 
-            if (error) {
-                Alert.alert("Login failed", error.message);
-            }
-        } else {
-            const { error } = await supabase.auth.signUp({
-                email,
-                password,
-                options: {
-                    data: {
-                        full_name: fullName,
-                        account_type: accountType,
-                    },
-                },
-            });
+    if (isLogin) {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-            if (error) {
-                Alert.alert("Signup failed", error.message);
-            } else {
-                Alert.alert(
-                    "Account created",
-                    "Your FavKid account has been created successfully."
-                );
-            }
-        }
-    };
+      if (error) {
+        Alert.alert("Login failed", error.message);
+      }
+    } else {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            account_type: accountType,
+          },
+        },
+      });
 
-    return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.card}>
-                <Text style={styles.logo}>FavKid</Text>
+      if (error) {
+        Alert.alert("Signup failed", error.message);
+      } else {
+        Alert.alert(
+          "Account created",
+          "Your FavKid account has been created successfully."
+        );
+      }
+    }
 
-                <Text style={styles.title}>
-                    {isLogin ? "Welcome back" : "Create your account"}
-                </Text>
+    setBusy(false);
+  };
 
-                <Text style={styles.subtitle}>
-                    Track achievements and connect with your favorite people.
-                </Text>
-
-                {!isLogin && (
-                    <>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Full name"
-                            value={fullName}
-                            onChangeText={setFullName}
-                        />
-
-                        <Text style={styles.label}>Choose account type</Text>
-
-                        <View style={styles.typeContainer}>
-                            <AccountTypeButton
-                                title="User"
-                                active={accountType === "user"}
-                                onPress={() => setAccountType("user")}
-                            />
-
-                            <AccountTypeButton
-                                title="Favorite"
-                                active={accountType === "favorite_person"}
-                                onPress={() => setAccountType("favorite_person")}
-                            />
-
-                            <AccountTypeButton
-                                title="Both"
-                                active={accountType === "both"}
-                                onPress={() => setAccountType("both")}
-                            />
-                        </View>
-                    </>
-                )}
-
-                <TextInput
-                    style={styles.input}
-                    placeholder="Email address"
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                />
-
-                <TextInput
-                    style={styles.input}
-                    placeholder="Password"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                />
-
-                <TouchableOpacity style={styles.button} onPress={handleAuth}>
-                    <Text style={styles.buttonText}>
-                        {isLogin ? "Login" : "Create account"}
-                    </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={() => setMode(isLogin ? "signup" : "login")}>
-                    <Text style={styles.switchText}>
-                        {isLogin
-                            ? "New to FavKid? Create an account"
-                            : "Already have an account? Login"}
-                    </Text>
-                </TouchableOpacity>
-            </View>
-        </SafeAreaView>
-    );
-}
-
-function AccountTypeButton({ title, active, onPress }) {
-    return (
-        <TouchableOpacity
-            style={[styles.typeButton, active && styles.typeButtonActive]}
-            onPress={onPress}
+  return (
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-            <Text style={[styles.typeText, active && styles.typeTextActive]}>
-                {title}
+          <View style={styles.headerRow}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
+              <View style={styles.brandMark}>
+                <Icon name="spark" size={24} stroke={2.2} color={COLORS.accentInk} />
+              </View>
+              <Text style={styles.brandText}>FavKid</Text>
+            </View>
+          </View>
+
+          <View style={styles.hero}>
+            <Eyebrow style={{ marginBottom: 14 }}>Accountability, gamified</Eyebrow>
+            <Text style={styles.title}>{isLogin ? "Welcome\nback." : "Create\naccount."}</Text>
+            <Text style={styles.sub}>
+              Track achievements, earn momentum, and stay accountable with the people who
+              matter.
             </Text>
-        </TouchableOpacity>
-    );
+
+            {!isLogin && (
+              <>
+                <Field label="Full name">
+                  <Input
+                    placeholder="Your name"
+                    value={fullName}
+                    onChangeText={setFullName}
+                  />
+                </Field>
+
+                <Field label="Account type">
+                  <View style={styles.typeRow}>
+                    <Chip
+                      label="User"
+                      on={accountType === "user"}
+                      onPress={() => setAccountType("user")}
+                      style={styles.typeChip}
+                    />
+                    <Chip
+                      label="Favorite"
+                      on={accountType === "favorite_person"}
+                      onPress={() => setAccountType("favorite_person")}
+                      style={styles.typeChip}
+                    />
+                    <Chip
+                      label="Both"
+                      on={accountType === "both"}
+                      onPress={() => setAccountType("both")}
+                      style={styles.typeChip}
+                    />
+                  </View>
+                </Field>
+              </>
+            )}
+
+            <Field label="Email address">
+              <Input
+                placeholder="you@email.com"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+            </Field>
+
+            <Field label="Password">
+              <Input
+                placeholder="••••••••"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+            </Field>
+
+            <Btn
+              title={isLogin ? "Log in" : "Create account"}
+              iconRight="arrowR"
+              onPress={handleAuth}
+              loading={busy}
+              style={{ marginTop: 22 }}
+            />
+            <Btn
+              title={isLogin ? "New to FavKid? Create an account" : "Already have an account? Log in"}
+              variant="ghost"
+              onPress={() => setMode(isLogin ? "signup" : "login")}
+              style={{ marginTop: 11 }}
+            />
+          </View>
+
+          <View style={styles.footer}>
+            <View style={styles.footerItem}>
+              <Icon name="lock" size={13} color={COLORS.textMute} />
+              <Text style={styles.footerText}>Private by default</Text>
+            </View>
+            <View style={styles.footerItem}>
+              <Icon name="check" size={13} color={COLORS.textMute} />
+              <Text style={styles.footerText}>Proof-verified</Text>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: "#F7F8FA",
-        justifyContent: "center",
-        padding: 20,
-    },
-    card: {
-        backgroundColor: "#FFFFFF",
-        borderRadius: 20,
-        padding: 24,
-        borderWidth: 1,
-        borderColor: "#E5E7EB",
-    },
-    logo: {
-        fontSize: 28,
-        fontWeight: "800",
-        color: "#4F46E5",
-        marginBottom: 20,
-        textAlign: "center",
-    },
-    title: {
-        fontSize: 24,
-        fontWeight: "800",
-        color: "#0F172A",
-        textAlign: "center",
-    },
-    subtitle: {
-        fontSize: 14,
-        color: "#64748B",
-        textAlign: "center",
-        marginTop: 8,
-        marginBottom: 24,
-        lineHeight: 20,
-    },
-    input: {
-        backgroundColor: "#F8FAFC",
-        borderWidth: 1,
-        borderColor: "#E5E7EB",
-        borderRadius: 12,
-        paddingHorizontal: 14,
-        paddingVertical: 13,
-        fontSize: 14,
-        marginBottom: 12,
-        color: "#0F172A",
-    },
-    label: {
-        fontSize: 13,
-        fontWeight: "700",
-        color: "#334155",
-        marginBottom: 8,
-    },
-    typeContainer: {
-        flexDirection: "row",
-        gap: 8,
-        marginBottom: 14,
-    },
-    typeButton: {
-        flex: 1,
-        borderWidth: 1,
-        borderColor: "#E5E7EB",
-        backgroundColor: "#F8FAFC",
-        paddingVertical: 10,
-        borderRadius: 12,
-        alignItems: "center",
-    },
-    typeButtonActive: {
-        backgroundColor: "#EEF0FF",
-        borderColor: "#4F46E5",
-    },
-    typeText: {
-        fontSize: 12,
-        fontWeight: "700",
-        color: "#64748B",
-    },
-    typeTextActive: {
-        color: "#4F46E5",
-    },
-    button: {
-        backgroundColor: "#4F46E5",
-        paddingVertical: 14,
-        borderRadius: 12,
-        alignItems: "center",
-        marginTop: 6,
-    },
-    buttonText: {
-        color: "#FFFFFF",
-        fontSize: 15,
-        fontWeight: "700",
-    },
-    switchText: {
-        textAlign: "center",
-        color: "#4F46E5",
-        fontSize: 13,
-        fontWeight: "600",
-        marginTop: 18,
-    },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  scroll: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 30, flexGrow: 1 },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  brandMark: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: COLORS.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  brandText: { fontFamily: FONTS.display, fontWeight: "800", fontSize: 22, color: COLORS.text },
+  hero: { flex: 1, justifyContent: "center", paddingVertical: 24 },
+  title: {
+    fontFamily: FONTS.display,
+    fontWeight: "800",
+    fontSize: 46,
+    lineHeight: 46,
+    letterSpacing: -1,
+    color: COLORS.text,
+  },
+  sub: { marginTop: 14, color: COLORS.textDim, fontSize: 14.5, lineHeight: 21 },
+  typeRow: { flexDirection: "row", gap: 8 },
+  typeChip: { flex: 1, justifyContent: "center" },
+  footer: { flexDirection: "row", justifyContent: "center", gap: 16, marginTop: 10 },
+  footerItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  footerText: { color: COLORS.textMute, fontSize: 12 },
 });

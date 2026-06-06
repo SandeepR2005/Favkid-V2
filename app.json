@@ -1,15 +1,19 @@
 {
   "expo": {
-    "name": "favkid",
+    "name": "FavKid",
     "slug": "favkid",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sandeep.favkid",
+      "buildNumber": "1"
     },
     "android": {
+      "package": "com.sandeep.favkid",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -21,7 +25,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "@react-native-community/datetimepicker"
-    ]
+      "@react-native-community/datetimepicker",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "807365d6-ef27-4578-98be-6e33078d1a7c"
+      }
+    }
   }
 }

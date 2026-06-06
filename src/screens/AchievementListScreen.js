@@ -1,1157 +1,628 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../lib/supabase";
+import { COLORS, FONTS, RADIUS, categoryColor, initialOf } from "../theme";
+import Icon from "../components/Icon";
+import {
+  Bar,
+  Card,
+  DangerSmBtn,
+  Eyebrow,
+  LoadingBox,
+  Mono,
+  PageSub,
+  PageTitle,
+  Pill,
+  Ring,
+  SecTitle,
+  StatBox,
+  StatusPill,
+  TopBar,
+} from "../components/ui";
 
-const COLORS = {
-    black: "#000000",
-    white: "#FFFFFF",
-    mint: "#A7F3D0",
-    lemon: "#FEF08A",
-    lilac: "#E9D5FF",
-    sky: "#BAE6FD",
-    red: "#EF4444",
-    gray: "#F3F4F6",
-    dot: "#D1D5DB",
+const FILTERS = ["All", "Active", "Completed"];
+
+const PRIORITY_COLOR = { high: COLORS.danger, medium: COLORS.info, low: COLORS.textMute };
+
+const SUB_STATE = {
+  approved: { icon: "check", color: COLORS.positive, bg: COLORS.positiveSoft, label: "Approved" },
+  completed: { icon: "check", color: COLORS.positive, bg: COLORS.positiveSoft, label: "Completed" },
+  submitted: { icon: "clock", color: COLORS.info, bg: COLORS.infoSoft, label: "In review" },
+  in_review: { icon: "clock", color: COLORS.info, bg: COLORS.infoSoft, label: "In review" },
+  pending: { icon: "clock", color: COLORS.warn, bg: COLORS.warnSoft, label: "Pending" },
+  assigned: { icon: "bolt", color: COLORS.warn, bg: COLORS.warnSoft, label: "Assigned" },
+  rejected: { icon: "trash", color: COLORS.danger, bg: COLORS.dangerSoft, label: "Rejected" },
+  locked: { icon: "lock", color: COLORS.textMute, bg: COLORS.surface3, label: "Locked" },
 };
 
-const DOTS = Array.from({ length: 260 }, (_, index) => {
-    const columns = 10;
+export default function AchievementListScreen({ onLogout }) {
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [achievements, setAchievements] = useState([]);
+  const [tasksByAchievement, setTasksByAchievement] = useState({});
+  const [profilesById, setProfilesById] = useState({});
+  const [selectedAchievementId, setSelectedAchievementId] = useState(null);
+  const [filter, setFilter] = useState("All");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+
+  useEffect(() => {
+    loadAchievements();
+  }, []);
+
+  const selectedAchievement = useMemo(() => {
+    if (!selectedAchievementId) return null;
+    return achievements.find((item) => item.id === selectedAchievementId) || null;
+  }, [achievements, selectedAchievementId]);
+
+  const filteredAchievements = useMemo(() => {
+    return achievements.filter((item) => {
+      const status = normalizeStatus(item.status);
+      if (filter === "Active") return status !== "completed";
+      if (filter === "Completed") return status === "completed";
+      return true;
+    });
+  }, [achievements, filter]);
+
+  const stats = useMemo(() => {
+    const total = achievements.length;
+    const completed = achievements.filter(
+      (item) => normalizeStatus(item.status) === "completed"
+    ).length;
     return {
-        id: index,
-        left: 12 + (index % columns) * 34,
-        top: 12 + Math.floor(index / columns) * 34,
+      total,
+      active: Math.max(0, total - completed),
+      completed,
     };
-});
+  }, [achievements]);
 
-export default function AchievementListScreen() {
-    const [currentUserId, setCurrentUserId] = useState(null);
-    const [achievements, setAchievements] = useState([]);
-    const [tasksByAchievement, setTasksByAchievement] = useState({});
-    const [profilesById, setProfilesById] = useState({});
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [deletingId, setDeletingId] = useState(null);
+  const loadAchievements = async () => {
+    const firstLoad = loading;
+    if (!firstLoad) setRefreshing(true);
 
-    useEffect(() => {
-        loadAchievements();
-    }, []);
+    const { data: userData, error: userError } = await supabase.auth.getUser();
 
-    const loadAchievements = async () => {
-        const isInitialLoad = loading;
-        if (!isInitialLoad) setRefreshing(true);
+    if (userError || !userData?.user) {
+      setLoading(false);
+      setRefreshing(false);
+      Alert.alert("Login required", "Please login again.");
+      return;
+    }
 
-        const { data: userData, error: userError } = await supabase.auth.getUser();
+    const userId = userData.user.id;
+    setCurrentUserId(userId);
 
-        if (userError || !userData?.user) {
-            setLoading(false);
-            setRefreshing(false);
-            Alert.alert("Login required", "Please login again.");
-            return;
-        }
+    const { data: achievementData, error: achievementError } = await supabase
+      .from("achievements")
+      .select(
+        "id, owner_id, title, description, category, priority, status, progress, overall_deadline_at, reminder_at, proof_type_required, success_criteria, notes, metadata, created_at, updated_at"
+      )
+      .order("created_at", { ascending: false });
 
-        const userId = userData.user.id;
-        setCurrentUserId(userId);
+    if (achievementError) {
+      setLoading(false);
+      setRefreshing(false);
+      Alert.alert("Achievement fetch failed", achievementError.message);
+      return;
+    }
 
-        const { data: achievementData, error: achievementError } = await supabase
-            .from("achievements")
-            .select(
-                "id, owner_id, title, description, category, priority, status, progress, overall_deadline_at, reminder_at, proof_type_required, success_criteria, notes, metadata, created_at, updated_at"
-            )
-            .order("created_at", { ascending: false });
+    const achievementRows = achievementData || [];
+    setAchievements(achievementRows);
 
-        if (achievementError) {
-            setLoading(false);
-            setRefreshing(false);
-            Alert.alert("Achievement fetch failed", achievementError.message);
-            return;
-        }
+    if (achievementRows.length === 0) {
+      setTasksByAchievement({});
+      setProfilesById({});
+      setSelectedAchievementId(null);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
-        const achievementRows = achievementData || [];
-        setAchievements(achievementRows);
+    const achievementIds = achievementRows.map((item) => item.id);
+    const ownerIds = [...new Set(achievementRows.map((item) => item.owner_id))];
 
-        if (achievementRows.length === 0) {
-            setTasksByAchievement({});
-            setProfilesById({});
-            setLoading(false);
-            setRefreshing(false);
-            return;
-        }
+    const { data: taskData, error: taskError } = await supabase
+      .from("achievement_tasks")
+      .select(
+        "id, achievement_id, owner_id, order_number, title, status, deadline_at, estimated_minutes, metadata, created_at, updated_at"
+      )
+      .in("achievement_id", achievementIds)
+      .order("order_number", { ascending: true });
 
-        const achievementIds = achievementRows.map((item) => item.id);
-        const ownerIds = [...new Set(achievementRows.map((item) => item.owner_id))];
+    if (taskError) {
+      setLoading(false);
+      setRefreshing(false);
+      Alert.alert("Subtask fetch failed", taskError.message);
+      return;
+    }
 
-        const { data: taskData, error: taskError } = await supabase
-            .from("achievement_tasks")
-            .select(
-                "id, achievement_id, owner_id, order_number, title, status, deadline_at, estimated_minutes, metadata, created_at, updated_at"
-            )
-            .in("achievement_id", achievementIds)
-            .order("order_number", { ascending: true });
+    const groupedTasks = {};
+    (taskData || []).forEach((task) => {
+      if (!groupedTasks[task.achievement_id]) groupedTasks[task.achievement_id] = [];
+      groupedTasks[task.achievement_id].push(task);
+    });
+    setTasksByAchievement(groupedTasks);
 
-        if (taskError) {
-            setLoading(false);
-            setRefreshing(false);
-            Alert.alert("Subtask fetch failed", taskError.message);
-            return;
-        }
+    if (ownerIds.length > 0) {
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, full_name, username, account_type")
+        .in("id", ownerIds);
 
-        const groupedTasks = {};
-        (taskData || []).forEach((task) => {
-            if (!groupedTasks[task.achievement_id]) {
-                groupedTasks[task.achievement_id] = [];
-            }
-            groupedTasks[task.achievement_id].push(task);
-        });
-        setTasksByAchievement(groupedTasks);
-
-        if (ownerIds.length > 0) {
-            const { data: profileData, error: profileError } = await supabase
-                .from("profiles")
-                .select("id, full_name, username, account_type")
-                .in("id", ownerIds);
-
-            if (profileError) {
-                setLoading(false);
-                setRefreshing(false);
-                Alert.alert("Profile fetch failed", profileError.message);
-                return;
-            }
-
-            const profileMap = {};
-            (profileData || []).forEach((profile) => {
-                profileMap[profile.id] = profile;
-            });
-            setProfilesById(profileMap);
-        }
-
+      if (profileError) {
         setLoading(false);
         setRefreshing(false);
-    };
+        Alert.alert("Profile fetch failed", profileError.message);
+        return;
+      }
 
+      const profileMap = {};
+      (profileData || []).forEach((profile) => {
+        profileMap[profile.id] = profile;
+      });
+      setProfilesById(profileMap);
+    }
 
-    const deleteAchievement = async (achievement) => {
-        if (!achievement || deletingId) return;
+    setLoading(false);
+    setRefreshing(false);
+  };
 
-        if (achievement.owner_id !== currentUserId) {
-            Alert.alert(
-                "Not allowed",
-                "Only the user who created this achievement can delete it. Favorite persons can only view shared achievements."
-            );
-            return;
+  const deleteAchievement = async (achievement) => {
+    if (!achievement || deletingId) return;
+
+    if (achievement.owner_id !== currentUserId) {
+      Alert.alert(
+        "Not allowed",
+        "Only the user who created this achievement can delete it. Favorite persons can only view shared achievements."
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Delete achievement?",
+      "This will permanently delete the achievement and all subtasks inside it.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setDeletingId(achievement.id);
+
+            const { error: taskDeleteError } = await supabase
+              .from("achievement_tasks")
+              .delete()
+              .eq("achievement_id", achievement.id)
+              .eq("owner_id", currentUserId);
+
+            if (taskDeleteError) {
+              setDeletingId(null);
+              Alert.alert("Subtask delete failed", taskDeleteError.message);
+              return;
+            }
+
+            const { error: achievementDeleteError } = await supabase
+              .from("achievements")
+              .delete()
+              .eq("id", achievement.id)
+              .eq("owner_id", currentUserId);
+
+            if (achievementDeleteError) {
+              setDeletingId(null);
+              Alert.alert("Achievement delete failed", achievementDeleteError.message);
+              return;
+            }
+
+            setSelectedAchievementId(null);
+            setAchievements((prev) => prev.filter((item) => item.id !== achievement.id));
+            setTasksByAchievement((prev) => {
+              const updated = { ...prev };
+              delete updated[achievement.id];
+              return updated;
+            });
+            setDeletingId(null);
+            Alert.alert("Deleted", "Achievement deleted successfully.");
+          },
+        },
+      ]
+    );
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={{ paddingHorizontal: 20 }}>
+          <TopBar onLogout={onLogout} />
+        </View>
+        <LoadingBox text="Loading achievements…" />
+      </SafeAreaView>
+    );
+  }
+
+  if (selectedAchievement) {
+    return (
+      <AchievementDetail
+        achievement={selectedAchievement}
+        tasks={tasksByAchievement[selectedAchievement.id] || []}
+        owner={profilesById[selectedAchievement.owner_id]}
+        isOwnAchievement={selectedAchievement.owner_id === currentUserId}
+        onBack={() => setSelectedAchievementId(null)}
+        onDelete={deleteAchievement}
+        onLogout={onLogout}
+        deleting={deletingId === selectedAchievement.id}
+      />
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={loadAchievements} tintColor={COLORS.accent} />
         }
+      >
+        <TopBar onLogout={onLogout} />
 
-        Alert.alert(
-            "Delete achievement?",
-            "This will permanently delete the achievement and all subtasks inside it from Supabase.",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: async () => {
-                        setDeletingId(achievement.id);
+        <Eyebrow>Your progress</Eyebrow>
+        <PageTitle>Achievements</PageTitle>
+        <PageSub>Goals you created and achievements shared by connected users.</PageSub>
 
-                        const { error: taskDeleteError } = await supabase
-                            .from("achievement_tasks")
-                            .delete()
-                            .eq("achievement_id", achievement.id)
-                            .eq("owner_id", currentUserId);
+        <View style={styles.statsRow}>
+          <StatBox num={stats.total} label="Total" hl />
+          <StatBox num={stats.active} label="Active" />
+          <StatBox num={stats.completed} label="Completed" />
+        </View>
 
-                        if (taskDeleteError) {
-                            setDeletingId(null);
-                            Alert.alert("Subtask delete failed", taskDeleteError.message);
-                            return;
-                        }
-
-                        const { error: achievementDeleteError } = await supabase
-                            .from("achievements")
-                            .delete()
-                            .eq("id", achievement.id)
-                            .eq("owner_id", currentUserId);
-
-                        if (achievementDeleteError) {
-                            setDeletingId(null);
-                            Alert.alert("Achievement delete failed", achievementDeleteError.message);
-                            return;
-                        }
-
-                        setAchievements((prev) =>
-                            prev.filter((item) => item.id !== achievement.id)
-                        );
-
-                        setTasksByAchievement((prev) => {
-                            const updated = { ...prev };
-                            delete updated[achievement.id];
-                            return updated;
-                        });
-
-                        setDeletingId(null);
-                        Alert.alert("Deleted", "Achievement deleted successfully.");
-                    },
-                },
-            ]
-        );
-    };
-
-    const completedCount = useMemo(() => {
-        return achievements.filter((item) => item.status === "completed").length;
-    }, [achievements]);
-
-    if (loading) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <DotPattern />
-                <View style={styles.loadingBox}>
-                    <ActivityIndicator size="large" color={COLORS.black} />
-                    <Text style={styles.loadingText}>LOADING ACHIEVEMENTS...</Text>
-                </View>
-            </SafeAreaView>
-        );
-    }
-
-    return (
-        <SafeAreaView style={styles.container}>
-            <DotPattern />
-
-            <View style={styles.topBar}>
-                <View style={styles.brandRow}>
-                    <View style={styles.brandIcon}>
-                        <Text style={styles.brandIconText}>★</Text>
-                    </View>
-                    <Text style={styles.brandText}>FAVKID</Text>
-                </View>
-
-                <TouchableOpacity
-                    activeOpacity={0.75}
-                    style={styles.settingsButton}
-                    onPress={() => Alert.alert("Settings", "Settings will be added later.")}
-                >
-                    <Text style={styles.settingsText}>⚙</Text>
-                </TouchableOpacity>
-            </View>
-
-            <ScrollView
-                contentContainerStyle={styles.content}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={loadAchievements}
-                        tintColor={COLORS.black}
-                    />
-                }
+        <View style={styles.segment}>
+          {FILTERS.map((item) => (
+            <TouchableOpacity
+              key={item}
+              activeOpacity={0.85}
+              style={[styles.segmentBtn, filter === item && styles.segmentBtnActive]}
+              onPress={() => setFilter(item)}
             >
-                <View style={styles.headerBlock}>
-                    <Text style={styles.pageTitle}>ACHIEVEMENTS</Text>
-                    <View style={styles.subtitleBorder}>
-                        <Text style={styles.subtitle}>
-                            Your achievements and achievements shared by connected users.
-                        </Text>
-                    </View>
-                </View>
-
-                <View style={styles.summaryRow}>
-                    <View style={[styles.summaryBox, { backgroundColor: COLORS.mint }]}>
-                        <Text style={styles.summaryNumber}>{achievements.length}</Text>
-                        <Text style={styles.summaryLabel}>TOTAL</Text>
-                    </View>
-
-                    <View style={[styles.summaryBox, { backgroundColor: COLORS.lemon }]}>
-                        <Text style={styles.summaryNumber}>{completedCount}</Text>
-                        <Text style={styles.summaryLabel}>DONE</Text>
-                    </View>
-                </View>
-
-                {achievements.length === 0 ? (
-                    <View style={styles.emptyCard}>
-                        <Text style={styles.emptyTitle}>NO ACHIEVEMENTS YET</Text>
-                        <Text style={styles.emptyText}>
-                            Create an achievement from the Add tab. Once saved, it will appear here.
-                            Accepted favorite people can also view shared achievements.
-                        </Text>
-                    </View>
-                ) : (
-                    achievements.map((achievement, index) => (
-                        <AchievementCard
-                            key={achievement.id}
-                            achievement={achievement}
-                            index={index}
-                            owner={profilesById[achievement.owner_id]}
-                            tasks={tasksByAchievement[achievement.id] || []}
-                            isOwnAchievement={achievement.owner_id === currentUserId}
-                            onDelete={deleteAchievement}
-                            deleting={deletingId === achievement.id}
-                        />
-                    ))
-                )}
-            </ScrollView>
-        </SafeAreaView>
-    );
-}
-
-function AchievementCard({
-    achievement,
-    index,
-    owner,
-    tasks,
-    isOwnAchievement,
-    onDelete,
-    deleting,
-}) {
-    const theme = getTheme(achievement.category, index);
-    const priority = normalizeText(achievement.priority || "medium");
-    const status = normalizeText(achievement.status || "active");
-    const progressValue = Number(achievement.progress || 0);
-    const visualProgress = progressValue === 0 ? 4 : Math.min(progressValue, 100);
-    const badgeLabel = isOwnAchievement ? "MINE" : "SHARED";
-    const ownerName = isOwnAchievement
-        ? "YOUR ACHIEVEMENT"
-        : `${(owner?.full_name || "CONNECTED USER").toUpperCase()}`;
-    const ownerNote = isOwnAchievement
-        ? "VISIBLE TO ACCEPTED FAVORITE PEOPLE"
-        : "SHARED THROUGH ACCEPTED CONNECTION";
-    const viewModeText = isOwnAchievement ? "OWNER VIEW" : "FAVORITE PERSON VIEW";
-
-    return (
-        <View style={styles.achievementShadow}>
-            <View style={styles.achievementCard}>
-                <View style={styles.cardTopRow}>
-                    <View style={styles.ownerRow}>
-                        <View style={[styles.avatarBox, { backgroundColor: theme.icon }]}>
-                            <Text style={styles.avatarText}>
-                                {getInitial(owner?.full_name || achievement.title)}
-                            </Text>
-                        </View>
-
-                        <View style={styles.ownerTextBox}>
-                            <Text style={styles.ownerName}>{ownerName}</Text>
-                            <Text style={styles.ownerNote}>{ownerNote}</Text>
-                        </View>
-                    </View>
-
-                    <View style={styles.cardActionColumn}>
-                        <View style={styles.mineBadge}>
-                            <Text style={styles.mineBadgeText}>{badgeLabel}</Text>
-                        </View>
-                        {isOwnAchievement && (
-                            <TouchableOpacity
-                                activeOpacity={0.8}
-                                style={styles.deleteButton}
-                                onPress={() => onDelete(achievement)}
-                                disabled={deleting}
-                            >
-                                <Text style={styles.deleteButtonText}>
-                                    {deleting ? "DELETING" : "DELETE"}
-                                </Text>
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                </View>
-
-                <View
-                    style={[
-                        styles.visibilityStrip,
-                        { backgroundColor: isOwnAchievement ? COLORS.mint : COLORS.sky },
-                    ]}
-                >
-                    <Text style={styles.visibilityStripText}>{viewModeText}</Text>
-                </View>
-
-                <View style={styles.titleBlock}>
-                    <Text style={styles.achievementTitle} numberOfLines={2}>
-                        {achievement.title || "UNTITLED"}
-                    </Text>
-
-                    {!!achievement.description && (
-                        <View
-                            style={[
-                                styles.descriptionBox,
-                                { backgroundColor: theme.description },
-                            ]}
-                        >
-                            <Text style={styles.descriptionText}>
-                                {achievement.description}
-                            </Text>
-                        </View>
-                    )}
-                </View>
-
-                <View style={styles.metaRow}>
-                    <View style={[styles.metaCard, { backgroundColor: theme.category }]}>
-                        <Text style={styles.metaLabel}>CATEGORY</Text>
-                        <Text style={styles.metaValue}>
-                            {normalizeText(achievement.category || "general")}
-                        </Text>
-                    </View>
-
-                    <View
-                        style={[
-                            styles.metaCard,
-                            priority === "High" ? styles.priorityHighCard : styles.priorityNormalCard,
-                        ]}
-                    >
-                        <Text
-                            style={[
-                                styles.metaLabel,
-                                priority === "High" && styles.priorityHighLabel,
-                            ]}
-                        >
-                            PRIORITY
-                        </Text>
-                        <Text
-                            style={[
-                                styles.metaValue,
-                                priority === "High" && styles.priorityHighText,
-                            ]}
-                        >
-                            {priority}
-                        </Text>
-                    </View>
-                </View>
-
-                <View style={styles.deadlineCard}>
-                    <Text style={styles.metaLabel}>OVERALL DEADLINE</Text>
-                    <Text style={styles.deadlineText}>
-                        {formatDateTime(achievement.overall_deadline_at)}
-                    </Text>
-                </View>
-
-                <View style={styles.progressBlock}>
-                    <View style={styles.progressTopRow}>
-                        <Text style={styles.progressLabel}>PROGRESS: {progressValue}%</Text>
-                        <View style={styles.statusBadge}>
-                            <Text style={styles.statusBadgeText}>{status}</Text>
-                        </View>
-                    </View>
-
-                    <View style={styles.progressTrack}>
-                        <View
-                            style={[
-                                styles.progressFill,
-                                {
-                                    width: `${visualProgress}%`,
-                                    backgroundColor: theme.progress,
-                                },
-                            ]}
-                        />
-                    </View>
-                </View>
-
-                <View style={styles.subtaskSection}>
-                    <View style={styles.subtaskHeader}>
-                        <View style={styles.subtaskHeaderLeft}>
-                            <Text style={styles.subtaskHeaderIcon}>☷</Text>
-                            <Text style={styles.subtaskHeaderText}>SUBTASKS ({tasks.length})</Text>
-                        </View>
-                        <Text style={styles.subtaskParentLabel}>INSIDE ACHIEVEMENT</Text>
-                    </View>
-
-                    <Text style={styles.subtaskHelperText}>
-                        These tasks belong to this achievement and follow its overall deadline.
-                    </Text>
-
-                    {tasks.length === 0 ? (
-                        <View style={styles.noTaskBox}>
-                            <Text style={styles.noTaskText}>NO SUBTASKS</Text>
-                        </View>
-                    ) : (
-                        <View style={styles.subtaskListBox}>
-                            {tasks.map((task, taskIndex) => (
-                                <SubtaskItem key={task.id} task={task} index={taskIndex} />
-                            ))}
-                        </View>
-                    )}
-                </View>
-            </View>
+              <Text style={[styles.segmentText, filter === item && styles.segmentTextActive]}>
+                {item}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
-    );
-}
 
-function SubtaskItem({ task, index }) {
-    return (
-        <View style={styles.subtaskShadow}>
-            <View style={styles.subtaskCard}>
-                <View style={styles.subtaskConnector} />
-                <View style={styles.subtaskLeft}>
-                    <View style={styles.subtaskNumber}>
-                        <Text style={styles.subtaskNumberText}>{index + 1}</Text>
-                    </View>
-
-                    <View style={styles.subtaskTextBox}>
-                        <Text style={styles.subtaskLabel}>SUBTASK</Text>
-                        <Text style={styles.subtaskTitle} numberOfLines={2}>
-                            {task.title || "UNTITLED TASK"}
-                        </Text>
-                        <View style={styles.subtaskMetaRow}>
-                            <Text style={styles.subtaskMeta}>
-                                {task.estimated_minutes || 0} MIN
-                            </Text>
-                            <Text style={styles.subtaskMetaDot}>•</Text>
-                            <Text style={styles.subtaskMeta}>
-                                {formatDateTime(task.deadline_at)}
-                            </Text>
-                        </View>
-                    </View>
-                </View>
-
-                <View style={styles.subtaskStatus}>
-                    <Text style={styles.subtaskStatusText}>
-                        {normalizeText(task.status || "pending")}
-                    </Text>
-                </View>
-            </View>
-        </View>
-    );
-}
-
-function DotPattern() {
-    return (
-        <View pointerEvents="none" style={styles.dotLayer}>
-            {DOTS.map((dot) => (
-                <View
-                    key={dot.id}
-                    style={[
-                        styles.dot,
-                        {
-                            left: dot.left,
-                            top: dot.top,
-                        },
-                    ]}
-                />
+        {filteredAchievements.length === 0 ? (
+          <Card style={{ borderStyle: "dashed", alignItems: "center", paddingVertical: 28 }}>
+            <Text style={styles.emptyTitle}>No achievements found</Text>
+            <Text style={styles.emptyText}>
+              Create one from the Add tab. Shared achievements appear here once a connection is
+              accepted.
+            </Text>
+          </Card>
+        ) : (
+          <View style={{ gap: 12 }}>
+            {filteredAchievements.map((achievement) => (
+              <AchievementCard
+                key={achievement.id}
+                achievement={achievement}
+                owner={profilesById[achievement.owner_id]}
+                tasks={tasksByAchievement[achievement.id] || []}
+                isOwnAchievement={achievement.owner_id === currentUserId}
+                onOpen={() => setSelectedAchievementId(achievement.id)}
+              />
             ))}
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function AchievementCard({ achievement, owner, tasks, isOwnAchievement, onOpen }) {
+  const cat = categoryColor(achievement.category);
+  const progress = getProgressFromTasks(achievement, tasks);
+  const completedTasks = tasks.filter((task) => isTaskDone(task.status)).length;
+  const done = normalizeStatus(achievement.status) === "completed";
+  const ownerLabel = isOwnAchievement
+    ? "You"
+    : owner?.full_name || owner?.username || "Connected user";
+
+  return (
+    <TouchableOpacity activeOpacity={0.88} style={styles.card} onPress={onOpen}>
+      <View style={styles.cardTop}>
+        <View style={{ flexDirection: "row", gap: 12, flex: 1 }}>
+          <View style={[styles.avatar, { backgroundColor: cat.soft }]}>
+            <Text style={[styles.avatarText, { color: cat.solid }]}>
+              {initialOf(achievement.title)}
+            </Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle} numberOfLines={2}>
+              {achievement.title || "Untitled achievement"}
+            </Text>
+            <Text style={styles.cardOwner} numberOfLines={1}>
+              {ownerLabel} · {prettyText(achievement.category || "General")}
+            </Text>
+          </View>
         </View>
-    );
+        <StatusPill status={done ? "Completed" : "Active"} />
+      </View>
+
+      {!!achievement.description && (
+        <Text style={styles.cardDesc} numberOfLines={2}>
+          {achievement.description}
+        </Text>
+      )}
+
+      <View style={styles.chipRow}>
+        <Pill dotColor={PRIORITY_COLOR[normalizeStatus(achievement.priority)] || COLORS.info}>
+          {prettyText(achievement.priority || "Medium")}
+        </Pill>
+        <Pill icon="cal">{formatDeadline(achievement.overall_deadline_at)}</Pill>
+      </View>
+
+      <View style={[styles.rowBetween, { marginTop: 14, marginBottom: 7 }]}>
+        <Mono style={{ fontSize: 12, color: COLORS.textMute }}>
+          {completedTasks}/{tasks.length} subtasks
+        </Mono>
+        <Mono style={{ fontSize: 13, fontWeight: "700", color: done ? COLORS.text : COLORS.accent }}>
+          {progress}%
+        </Mono>
+      </View>
+      <Bar value={progress} done={done} />
+    </TouchableOpacity>
+  );
 }
 
-function getTheme(category, index) {
-    const normalized = String(category || "").toLowerCase();
+function AchievementDetail({ achievement, tasks, owner, isOwnAchievement, onBack, onDelete, onLogout, deleting }) {
+  const progress = getProgressFromTasks(achievement, tasks);
+  const completedTasks = tasks.filter((task) => isTaskDone(task.status)).length;
+  const status = normalizeStatus(achievement.status);
+  const done = status === "completed";
 
-    if (normalized.includes("career")) {
-        return {
-            icon: COLORS.sky,
-            category: COLORS.mint,
-            description: "#E0F7FF",
-            progress: COLORS.mint,
-        };
-    }
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.detailTopBar}>
+          <TouchableOpacity activeOpacity={0.8} style={styles.backChip} onPress={onBack}>
+            <Icon name="chevL" size={16} stroke={2.2} color={COLORS.textDim} />
+            <Text style={styles.backChipText}>Achievements</Text>
+          </TouchableOpacity>
 
-    if (normalized.includes("personal")) {
-        return {
-            icon: COLORS.lilac,
-            category: COLORS.lilac,
-            description: "#F3E8FF",
-            progress: COLORS.lilac,
-        };
-    }
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {isOwnAchievement && (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={styles.trashChip}
+                disabled={deleting}
+                onPress={() => onDelete(achievement)}
+              >
+                <Icon name="trash" size={16} color={COLORS.danger} />
+              </TouchableOpacity>
+            )}
+            {onLogout ? <DangerSmBtn onPress={onLogout} /> : null}
+          </View>
+        </View>
 
-    if (normalized.includes("fitness")) {
-        return {
-            icon: COLORS.mint,
-            category: COLORS.mint,
-            description: "#DCFCE7",
-            progress: COLORS.mint,
-        };
-    }
+        <Card>
+          <StatusPill status={done ? "Completed" : "Active"} />
+          <Text style={styles.detailTitle}>{achievement.title || "Untitled achievement"}</Text>
 
-    if (normalized.includes("study") || normalized.includes("skill")) {
-        return {
-            icon: COLORS.lemon,
-            category: COLORS.sky,
-            description: "#FEF9C3",
-            progress: COLORS.sky,
-        };
-    }
+          <View style={styles.ownerRow}>
+            <View style={styles.avatarInk}>
+              <Text style={styles.avatarInkText}>
+                {isOwnAchievement ? "Y" : initialOf(owner?.full_name || owner?.username)}
+              </Text>
+            </View>
+            <View>
+              <Text style={styles.ownerName}>
+                {isOwnAchievement ? "You" : owner?.full_name || owner?.username || "Connected user"}
+              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                <Icon name="eye" size={13} color={COLORS.textMute} />
+                <Text style={styles.ownerMeta}>
+                  {isOwnAchievement ? "Visible to accepted favorite people" : "Shared connection"}
+                </Text>
+              </View>
+            </View>
+          </View>
 
-    const fallbackThemes = [
-        {
-            icon: COLORS.sky,
-            category: COLORS.mint,
-            description: "#E0F7FF",
-            progress: COLORS.mint,
-        },
-        {
-            icon: COLORS.lilac,
-            category: COLORS.lilac,
-            description: "#F3E8FF",
-            progress: COLORS.lilac,
-        },
-    ];
+          {!!achievement.description && <Text style={styles.detailDesc}>{achievement.description}</Text>}
 
-    return fallbackThemes[index % fallbackThemes.length];
+          <View style={styles.metaGrid}>
+            <MetaCell label="Category" value={prettyText(achievement.category || "General")} />
+            <MetaCell label="Priority" value={prettyText(achievement.priority || "Medium")} />
+            <MetaCell label="Deadline" value={formatDeadline(achievement.overall_deadline_at)} />
+            <MetaCell label="Subtasks" value={`${completedTasks} of ${tasks.length}`} />
+          </View>
+
+          <View style={styles.progressCard}>
+            <Ring value={progress} size={84} stroke={9} color={done ? COLORS.positive : COLORS.accent}>
+              <Text style={styles.ringText}>{progress}%</Text>
+            </Ring>
+            <View style={{ flex: 1 }}>
+              <Mono style={styles.metaCellLabel}>OVERALL PROGRESS</Mono>
+              <Text style={styles.progressTitle}>
+                {done ? "Goal complete" : progress >= 30 ? "On track" : "Getting started"}
+              </Text>
+              <Text style={styles.progressSmall}>
+                {completedTasks} of {tasks.length} subtasks approved
+              </Text>
+            </View>
+          </View>
+        </Card>
+
+        <SecTitle>Subtasks</SecTitle>
+        {tasks.length === 0 ? (
+          <Card style={{ borderStyle: "dashed" }}>
+            <Text style={styles.emptyText}>No subtasks saved for this achievement.</Text>
+          </Card>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {tasks.map((task) => (
+              <SubtaskRow key={task.id} task={task} />
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
 
-function formatDateTime(value) {
-    if (!value) return "NO DEADLINE";
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-        return "INVALID DATE";
-    }
-
-    return date.toLocaleString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-    });
+function MetaCell({ label, value }) {
+  return (
+    <View style={styles.metaCell}>
+      <Mono style={styles.metaCellLabel}>{String(label).toUpperCase()}</Mono>
+      <Text style={styles.metaCellValue} numberOfLines={2}>
+        {value}
+      </Text>
+    </View>
+  );
 }
 
-function getInitial(value) {
-    if (!value) return "F";
-    return String(value).trim().charAt(0).toUpperCase();
+function SubtaskRow({ task }) {
+  const st = SUB_STATE[normalizeStatus(task.status)] || SUB_STATE.locked;
+  return (
+    <Card style={styles.subtaskRow}>
+      <View style={[styles.subtaskIcon, { backgroundColor: st.bg }]}>
+        <Icon name={st.icon} size={19} stroke={2.2} color={st.color} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.subtaskTitle}>{task.title || "Untitled subtask"}</Text>
+        <Text style={styles.subtaskMeta}>
+          {st.label} · {formatDeadline(task.deadline_at)}
+        </Text>
+      </View>
+    </Card>
+  );
 }
 
-function normalizeText(value) {
-    if (!value) return "";
-    const text = String(value).replace(/_/g, " ");
-    return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+/* ---------------- helpers (unchanged backend logic) ---------------- */
+function normalizeStatus(value) {
+  return String(value || "").trim().toLowerCase();
+}
+function isTaskDone(status) {
+  const value = normalizeStatus(status);
+  return value === "approved" || value === "completed";
+}
+function getProgressFromTasks(achievement, tasks) {
+  const storedProgress = Number(achievement?.progress || 0);
+  if (!tasks || tasks.length === 0) return Math.max(0, Math.min(100, storedProgress));
+  const done = tasks.filter((task) => isTaskDone(task.status)).length;
+  return Math.round((done / tasks.length) * 100);
+}
+function prettyText(value) {
+  return String(value || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+function formatDeadline(value) {
+  if (!value) return "No deadline";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Invalid date";
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.white,
-    },
-    dotLayer: {
-        ...StyleSheet.absoluteFillObject,
-    },
-    dot: {
-        position: "absolute",
-        width: 4,
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: COLORS.dot,
-    },
-    topBar: {
-        height: 66,
-        backgroundColor: COLORS.white,
-        borderBottomWidth: 4,
-        borderBottomColor: COLORS.black,
-        paddingHorizontal: 18,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        zIndex: 5,
-    },
-    brandRow: {
-        flexDirection: "row",
-        alignItems: "center",
-    },
-    brandIcon: {
-        width: 34,
-        height: 34,
-        borderWidth: 3,
-        borderColor: COLORS.black,
-        backgroundColor: COLORS.lilac,
-        alignItems: "center",
-        justifyContent: "center",
-        marginRight: 8,
-    },
-    brandIconText: {
-        color: COLORS.black,
-        fontSize: 16,
-        fontWeight: "900",
-    },
-    brandText: {
-        color: COLORS.black,
-        fontSize: 14,
-        fontWeight: "900",
-        letterSpacing: 0.5,
-    },
-    settingsButton: {
-        width: 34,
-        height: 34,
-        borderWidth: 3,
-        borderColor: COLORS.black,
-        backgroundColor: COLORS.lemon,
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    settingsText: {
-        fontSize: 16,
-        fontWeight: "900",
-        color: COLORS.black,
-    },
-    content: {
-        paddingHorizontal: 24,
-        paddingTop: 26,
-        paddingBottom: 120,
-    },
-    headerBlock: {
-        marginBottom: 34,
-    },
-    pageTitle: {
-        fontSize: 38,
-        lineHeight: 42,
-        fontWeight: "900",
-        color: COLORS.black,
-        letterSpacing: -1,
-    },
-    subtitleBorder: {
-        marginTop: 12,
-        borderLeftWidth: 8,
-        borderLeftColor: COLORS.black,
-        paddingLeft: 12,
-    },
-    subtitle: {
-        color: COLORS.black,
-        fontSize: 13,
-        lineHeight: 17,
-        fontWeight: "800",
-    },
-    summaryRow: {
-        flexDirection: "row",
-        gap: 14,
-        marginBottom: 26,
-    },
-    summaryBox: {
-        flex: 1,
-        borderWidth: 3,
-        borderColor: COLORS.black,
-        paddingVertical: 12,
-        alignItems: "center",
-        shadowColor: COLORS.black,
-        shadowOffset: { width: 4, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 0,
-        elevation: 4,
-    },
-    summaryNumber: {
-        fontSize: 26,
-        lineHeight: 30,
-        fontWeight: "900",
-        color: COLORS.black,
-    },
-    summaryLabel: {
-        marginTop: 2,
-        fontSize: 10,
-        fontWeight: "900",
-        color: COLORS.black,
-    },
-    emptyCard: {
-        backgroundColor: COLORS.white,
-        borderWidth: 4,
-        borderColor: COLORS.black,
-        padding: 18,
-        shadowColor: COLORS.black,
-        shadowOffset: { width: 8, height: 8 },
-        shadowOpacity: 1,
-        shadowRadius: 0,
-        elevation: 8,
-    },
-    emptyTitle: {
-        fontSize: 22,
-        fontWeight: "900",
-        color: COLORS.black,
-        marginBottom: 8,
-    },
-    emptyText: {
-        fontSize: 13,
-        fontWeight: "700",
-        color: COLORS.black,
-        lineHeight: 19,
-    },
-    achievementShadow: {
-        marginBottom: 44,
-        shadowColor: COLORS.black,
-        shadowOffset: { width: 8, height: 8 },
-        shadowOpacity: 1,
-        shadowRadius: 0,
-        elevation: 8,
-    },
-    achievementCard: {
-        backgroundColor: COLORS.white,
-        borderWidth: 4,
-        borderColor: COLORS.black,
-        padding: 18,
-    },
-    cardTopRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        marginBottom: 14,
-    },
-    cardActionColumn: {
-        alignItems: "flex-end",
-        gap: 8,
-    },
-    ownerRow: {
-        flex: 1,
-        flexDirection: "row",
-        alignItems: "center",
-        paddingRight: 8,
-    },
-    avatarBox: {
-        width: 44,
-        height: 44,
-        borderWidth: 4,
-        borderColor: COLORS.black,
-        alignItems: "center",
-        justifyContent: "center",
-        marginRight: 12,
-    },
-    avatarText: {
-        fontSize: 20,
-        fontWeight: "900",
-        color: COLORS.black,
-    },
-    ownerTextBox: {
-        flex: 1,
-    },
-    ownerName: {
-        color: COLORS.black,
-        fontSize: 12,
-        lineHeight: 16,
-        fontWeight: "900",
-    },
-    ownerNote: {
-        color: COLORS.black,
-        opacity: 0.6,
-        fontSize: 9,
-        lineHeight: 12,
-        fontWeight: "900",
-        marginTop: 2,
-    },
-    mineBadge: {
-        backgroundColor: COLORS.black,
-        paddingHorizontal: 10,
-        paddingVertical: 5,
-    },
-    mineBadgeText: {
-        color: COLORS.white,
-        fontSize: 10,
-        fontWeight: "900",
-    },
-    deleteButton: {
-        backgroundColor: COLORS.red,
-        borderWidth: 3,
-        borderColor: COLORS.black,
-        paddingHorizontal: 9,
-        paddingVertical: 5,
-        shadowColor: COLORS.black,
-        shadowOffset: { width: 3, height: 3 },
-        shadowOpacity: 1,
-        shadowRadius: 0,
-        elevation: 3,
-    },
-    deleteButtonText: {
-        color: COLORS.white,
-        fontSize: 9,
-        fontWeight: "900",
-    },
-    visibilityStrip: {
-        borderWidth: 3,
-        borderColor: COLORS.black,
-        paddingVertical: 7,
-        paddingHorizontal: 10,
-        marginBottom: 18,
-    },
-    visibilityStripText: {
-        color: COLORS.black,
-        fontSize: 10,
-        fontWeight: "900",
-        textAlign: "center",
-    },
-    titleBlock: {
-        marginBottom: 26,
-    },
-    achievementTitle: {
-        fontSize: 28,
-        lineHeight: 32,
-        fontWeight: "900",
-        color: COLORS.black,
-        textTransform: "uppercase",
-        marginBottom: 10,
-    },
-    descriptionBox: {
-        borderWidth: 2,
-        borderColor: COLORS.black,
-        padding: 8,
-    },
-    descriptionText: {
-        color: COLORS.black,
-        fontSize: 14,
-        lineHeight: 20,
-        fontWeight: "800",
-    },
-    metaRow: {
-        flexDirection: "row",
-        gap: 14,
-        marginBottom: 26,
-    },
-    metaCard: {
-        flex: 1,
-        borderWidth: 3,
-        borderColor: COLORS.black,
-        padding: 12,
-        minHeight: 78,
-        shadowColor: COLORS.black,
-        shadowOffset: { width: 4, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 0,
-        elevation: 4,
-    },
-    priorityNormalCard: {
-        backgroundColor: COLORS.white,
-    },
-    priorityHighCard: {
-        backgroundColor: COLORS.black,
-    },
-    metaLabel: {
-        fontSize: 10,
-        lineHeight: 13,
-        fontWeight: "900",
-        color: COLORS.black,
-        marginBottom: 5,
-    },
-    metaValue: {
-        fontSize: 15,
-        lineHeight: 20,
-        fontWeight: "900",
-        color: COLORS.black,
-    },
-    priorityHighLabel: {
-        color: COLORS.white,
-    },
-    priorityHighText: {
-        color: COLORS.red,
-    },
-    deadlineCard: {
-        backgroundColor: COLORS.lemon,
-        borderWidth: 3,
-        borderColor: COLORS.black,
-        padding: 14,
-        marginBottom: 26,
-        shadowColor: COLORS.black,
-        shadowOffset: { width: 4, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 0,
-        elevation: 4,
-    },
-    deadlineText: {
-        color: COLORS.black,
-        fontSize: 15,
-        fontWeight: "900",
-    },
-    progressBlock: {
-        marginBottom: 28,
-    },
-    progressTopRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "flex-end",
-        marginBottom: 10,
-    },
-    progressLabel: {
-        color: COLORS.black,
-        fontSize: 11,
-        fontWeight: "900",
-    },
-    statusBadge: {
-        backgroundColor: COLORS.black,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-    },
-    statusBadgeText: {
-        color: COLORS.white,
-        fontSize: 10,
-        fontWeight: "900",
-        textTransform: "uppercase",
-    },
-    progressTrack: {
-        width: "100%",
-        height: 28,
-        backgroundColor: COLORS.white,
-        borderWidth: 4,
-        borderColor: COLORS.black,
-        padding: 3,
-    },
-    progressFill: {
-        height: "100%",
-        borderRightWidth: 4,
-        borderRightColor: COLORS.black,
-    },
-    subtaskSection: {
-        backgroundColor: COLORS.gray,
-        borderWidth: 4,
-        borderColor: COLORS.black,
-        padding: 12,
-        marginTop: 4,
-    },
-    subtaskHeader: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        marginBottom: 8,
-    },
-    subtaskHeaderLeft: {
-        flexDirection: "row",
-        alignItems: "center",
-        flex: 1,
-    },
-    subtaskHeaderIcon: {
-        color: COLORS.black,
-        fontSize: 18,
-        fontWeight: "900",
-        marginRight: 8,
-    },
-    subtaskHeaderText: {
-        color: COLORS.black,
-        fontSize: 16,
-        fontWeight: "900",
-    },
-    subtaskParentLabel: {
-        backgroundColor: COLORS.black,
-        color: COLORS.white,
-        fontSize: 8,
-        fontWeight: "900",
-        paddingHorizontal: 6,
-        paddingVertical: 3,
-        overflow: "hidden",
-    },
-    subtaskHelperText: {
-        color: COLORS.black,
-        opacity: 0.7,
-        fontSize: 10,
-        lineHeight: 14,
-        fontWeight: "900",
-        marginBottom: 12,
-    },
-    subtaskListBox: {
-        borderLeftWidth: 5,
-        borderLeftColor: COLORS.black,
-        paddingLeft: 10,
-    },
-    noTaskBox: {
-        borderWidth: 3,
-        borderColor: COLORS.black,
-        backgroundColor: COLORS.white,
-        padding: 12,
-        alignItems: "center",
-    },
-    noTaskText: {
-        color: COLORS.black,
-        fontSize: 12,
-        fontWeight: "900",
-    },
-    subtaskShadow: {
-        marginBottom: 12,
-        shadowColor: COLORS.black,
-        shadowOffset: { width: 4, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 0,
-        elevation: 4,
-    },
-    subtaskCard: {
-        backgroundColor: COLORS.white,
-        borderWidth: 3,
-        borderColor: COLORS.black,
-        padding: 12,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        position: "relative",
-    },
-    subtaskConnector: {
-        position: "absolute",
-        left: -15,
-        top: 22,
-        width: 15,
-        height: 4,
-        backgroundColor: COLORS.black,
-    },
-    subtaskLeft: {
-        flex: 1,
-        flexDirection: "row",
-        alignItems: "center",
-        paddingRight: 8,
-    },
-    subtaskNumber: {
-        width: 30,
-        height: 30,
-        backgroundColor: COLORS.black,
-        alignItems: "center",
-        justifyContent: "center",
-        marginRight: 12,
-    },
-    subtaskNumberText: {
-        color: COLORS.white,
-        fontSize: 13,
-        fontWeight: "900",
-    },
-    subtaskTextBox: {
-        flex: 1,
-    },
-    subtaskLabel: {
-        color: COLORS.black,
-        opacity: 0.55,
-        fontSize: 8,
-        lineHeight: 10,
-        fontWeight: "900",
-        marginBottom: 2,
-    },
-    subtaskTitle: {
-        color: COLORS.black,
-        fontSize: 14,
-        lineHeight: 18,
-        fontWeight: "900",
-        textTransform: "uppercase",
-    },
-    subtaskMetaRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        flexWrap: "wrap",
-        marginTop: 3,
-    },
-    subtaskMeta: {
-        color: COLORS.black,
-        opacity: 0.65,
-        fontSize: 9,
-        lineHeight: 12,
-        fontWeight: "900",
-    },
-    subtaskMetaDot: {
-        color: COLORS.black,
-        opacity: 0.65,
-        fontSize: 9,
-        lineHeight: 12,
-        fontWeight: "900",
-        marginHorizontal: 5,
-    },
-    subtaskStatus: {
-        borderWidth: 2,
-        borderColor: COLORS.black,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        maxWidth: 86,
-    },
-    subtaskStatusText: {
-        color: COLORS.black,
-        fontSize: 9,
-        fontWeight: "900",
-        textTransform: "uppercase",
-    },
-    loadingBox: {
-        flex: 1,
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    loadingText: {
-        marginTop: 14,
-        color: COLORS.black,
-        fontSize: 13,
-        fontWeight: "900",
-    },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  content: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 120 },
+  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  statsRow: { flexDirection: "row", gap: 10, marginTop: 18 },
+  segment: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 18,
+    marginBottom: 16,
+    backgroundColor: COLORS.surface2,
+    padding: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+  },
+  segmentBtn: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 10 },
+  segmentBtnActive: { backgroundColor: COLORS.accent },
+  segmentText: { color: COLORS.textDim, fontSize: 13.5, fontWeight: "700" },
+  segmentTextActive: { color: COLORS.accentInk },
+  emptyTitle: { color: COLORS.text, fontSize: 17, fontWeight: "800" },
+  emptyText: { marginTop: 7, color: COLORS.textMute, fontSize: 13, lineHeight: 19, textAlign: "center" },
+  card: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    borderRadius: RADIUS.lg,
+    padding: 18,
+  },
+  cardTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
+  avatar: { width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  avatarText: { fontFamily: FONTS.display, fontSize: 18, fontWeight: "800" },
+  cardTitle: { fontFamily: FONTS.display, color: COLORS.text, fontSize: 18, fontWeight: "800", letterSpacing: -0.2 },
+  cardOwner: { marginTop: 2, color: COLORS.textMute, fontSize: 12.5, fontWeight: "600" },
+  cardDesc: { marginTop: 12, color: COLORS.textDim, fontSize: 13.5, lineHeight: 19 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  detailTopBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16, marginTop: 4 },
+  backChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.surface2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.pill,
+    paddingVertical: 9,
+    paddingLeft: 11,
+    paddingRight: 14,
+  },
+  backChipText: { color: COLORS.textDim, fontSize: 13, fontWeight: "600" },
+  trashChip: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.surface2,
+    borderWidth: 1,
+    borderColor: COLORS.dangerSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  detailTitle: {
+    fontFamily: FONTS.display,
+    color: COLORS.text,
+    fontSize: 34,
+    lineHeight: 37,
+    fontWeight: "800",
+    letterSpacing: -1,
+    marginTop: 12,
+    marginBottom: 14,
+  },
+  ownerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  avatarInk: { width: 44, height: 44, borderRadius: 13, backgroundColor: COLORS.ink, alignItems: "center", justifyContent: "center" },
+  avatarInkText: { color: COLORS.onInk, fontFamily: FONTS.display, fontWeight: "800", fontSize: 18 },
+  ownerName: { color: COLORS.text, fontWeight: "700", fontSize: 15 },
+  ownerMeta: { color: COLORS.textMute, fontSize: 12.5 },
+  detailDesc: { marginTop: 15, color: COLORS.textDim, fontSize: 14, lineHeight: 20 },
+  metaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 16 },
+  metaCell: { width: "47%", flexGrow: 1, backgroundColor: COLORS.surface2, borderRadius: 14, padding: 13 },
+  metaCellLabel: { fontSize: 10.5, letterSpacing: 1, color: COLORS.textMute },
+  metaCellValue: { color: COLORS.text, fontSize: 14.5, fontWeight: "700", marginTop: 5 },
+  progressCard: { marginTop: 14, backgroundColor: COLORS.ink, borderRadius: 18, padding: 18, flexDirection: "row", alignItems: "center", gap: 18 },
+  ringText: { fontFamily: FONTS.display, fontSize: 20, fontWeight: "800", color: COLORS.onInk },
+  progressTitle: { fontFamily: FONTS.display, fontSize: 22, fontWeight: "800", color: COLORS.onInk, marginTop: 4 },
+  progressSmall: { color: COLORS.textDim, fontSize: 13, marginTop: 3 },
+  subtaskRow: { flexDirection: "row", alignItems: "center", gap: 13, padding: 15 },
+  subtaskIcon: { width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  subtaskTitle: { color: COLORS.text, fontWeight: "700", fontSize: 14.5 },
+  subtaskMeta: { color: COLORS.textMute, fontSize: 12, marginTop: 2 },
 });
