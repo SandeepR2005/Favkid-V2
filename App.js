@@ -15,6 +15,7 @@ import AchievementListScreen from "./src/screens/AchievementListScreen";
 import MatrixScreen from "./src/screens/MatrixScreen";
 import FavoriteMatrixAssignmentScreen from "./src/screens/FavoriteMatrixAssignmentScreen";
 import LeaderboardScreen from "./src/screens/LeaderboardScreen";
+import ChatbotScreen from "./src/screens/ChatbotScreen";
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -113,6 +114,10 @@ export default function App() {
       return <ConnectScreen onLogout={handleLogout} />;
     }
 
+    if (activeScreen === "chatbot") {
+      return <ChatbotScreen onLogout={handleLogout} />;
+    }
+
     if (activeScreen === "create") {
       return (
         <CreateAchievementScreen
@@ -161,6 +166,22 @@ export default function App() {
     <View style={styles.appContainer}>
       {renderActiveScreen()}
 
+      <TouchableOpacity
+        activeOpacity={0.88}
+        style={[styles.chatFab, activeScreen === "chatbot" && styles.chatFabActive]}
+        onPress={() => go("chatbot")}
+      >
+        <Icon
+          name="spark"
+          size={20}
+          stroke={2.3}
+          color={activeScreen === "chatbot" ? COLORS.accentInk : COLORS.accent}
+        />
+        <Text style={[styles.chatFabText, activeScreen === "chatbot" && styles.chatFabTextActive]}>
+          Guide
+        </Text>
+      </TouchableOpacity>
+
       <View style={[styles.bottomNav, isFavoriteOnly && styles.bottomNavTight]}>
         {navLeft.map((n) => (
           <NavItem key={n.id} {...n} active={activeScreen === n.id} onPress={() => go(n.id)} />
@@ -202,6 +223,37 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  chatFab: {
+    position: "absolute",
+    right: 20,
+    bottom: 96,
+    height: 46,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    shadowColor: "#1B1F2A",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 12,
+    zIndex: 110,
+  },
+  chatFabActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  chatFabText: {
+    color: COLORS.accent,
+    fontWeight: "800",
+    fontSize: 12.5,
+    letterSpacing: 0.2,
+  },
+  chatFabTextActive: { color: COLORS.accentInk },
   bottomNav: {
     position: "absolute",
     left: 14,
